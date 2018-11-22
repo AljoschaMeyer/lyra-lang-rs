@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use std::sync::Arc;
 
 use either::{Either, Left, Right};
 use num::{BigInt, BigRational, Num};
@@ -174,6 +175,15 @@ impl<'a> Parser<'a> {
         let meta = self.meta();
         if self.expect_kw("nil") {
             Some(((), meta))
+        } else {
+            None
+        }
+    }
+
+    fn p_args(&mut self) -> Option<Meta> {
+        let meta = self.meta();
+        if self.expect_kw("args") {
+            Some(meta)
         } else {
             None
         }
@@ -563,10 +573,17 @@ impl<'a> Parser<'a> {
             if !self.expect_kw("catch") {
                 return Err(ParseTryError::Catch.into());
             }
-            self.skip_ws();
-            let catcher = Box::new(self.p_exp()?);
 
-            return Ok((Try { to_try, catcher }, meta));
+            self.skip_ws();
+            match self.p_pattern() {
+                Err(err) => return Err(ParseTryError::Pattern(err).into()),
+                Ok(caught) => {
+                    self.skip_ws();
+                    let catcher = Box::new(self.p_exp()?);
+
+                    return Ok((Try { to_try, caught, catcher }, meta));
+                }
+            }
         } else {
             return Err(ParseIfError::Leading.into());
         }
@@ -633,7 +650,6 @@ impl<'a> Parser<'a> {
     }
 
     fn p_pattern(&mut self) -> Result<Pattern, ParsePatternError> {
-        let meta = self.meta();
         match self.peek() {
             None => return Err(ParsePatternError::Empty),
             Some('{') => {
@@ -658,7 +674,7 @@ impl<'a> Parser<'a> {
             Some('A'...'Z') | Some('a'...'z') | Some('_') => {
                 match self.p_id() {
                     Err(err) => return Err(ParsePatternError::Id(err)),
-                    Ok(id) => return Ok(Pattern::Id(id)),
+                    Ok(id) => return Ok(Pattern::Id(id.0, id.1)),
                 }
             }
             Some(_) => return Err(ParsePatternError::Leading),
@@ -683,7 +699,16 @@ impl<'a> Parser<'a> {
 
                     self.skip_ws();
                     let rhs = Box::new(self.p_exp()?);
-                    return Ok((Let { lhs, rhs }, meta));
+
+                    self.skip_ws();
+                    if !self.expect(';') {
+                        return Err(ParseLetError::Semicolon.into());
+                    }
+
+                    self.skip_ws();
+                    let continuing = Box::new(self.p_exp()?);
+
+                    return Ok((Let { lhs, rhs, continuing }, meta));
                 },
             }
         } else {
@@ -702,26 +727,21 @@ impl<'a> Parser<'a> {
         self.skip_ws();
         let args = if let Some(')') = self.peek() {
             self.skip();
-            Some(Vec::new())
+            Vec::new()
         } else {
-            if self.peek_kw("args") {
-                let _ = self.skip_str("args");
-                None
-            } else {
-                let mut args_acc = Vec::new();
-                args_acc.push(self.p_id()?);
+            let mut args_acc = Vec::new();
+            args_acc.push(self.p_id()?);
 
-                loop {
-                    self.skip_ws();
-                    match self.next() {
-                        None => return Err(ParseFunError::EndOfInput.into()),
-                        Some(')') => break Some(args_acc),
-                        Some(',') => {
-                            self.skip_ws();
-                            args_acc.push(self.p_id()?);
-                        }
-                        Some(_) => return Err(ParseFunError::CommaOrEnd.into()),
+            loop {
+                self.skip_ws();
+                match self.next() {
+                    None => return Err(ParseFunError::EndOfInput.into()),
+                    Some(')') => break args_acc,
+                    Some(',') => {
+                        self.skip_ws();
+                        args_acc.push(self.p_id()?);
                     }
+                    Some(_) => return Err(ParseFunError::CommaOrEnd.into()),
                 }
             }
         };
@@ -732,7 +752,7 @@ impl<'a> Parser<'a> {
         }
 
         let body = Box::new(self.p_exp()?);
-        return Ok((Fun { args, body }, meta));
+        return Ok((Fun(Arc::new(_Fun { args, body })), meta));
     }
 
     // Non-leftrecursive expressions
@@ -752,6 +772,9 @@ impl<'a> Parser<'a> {
                 if self.starts_with_a_kw() {
                     if self.peek_kw("nil") {
                         Ok(self.p_nil().unwrap().into())
+                    } else if self.peek_kw("args") {
+                        let meta = self.p_args().unwrap();
+                        Ok(Expression(_Expression::Args, meta))
                     } else if self.peek_kw("true") {
                         Ok(self.p_bool().unwrap().into())
                     } else if self.peek_kw("false") {
@@ -777,7 +800,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn p_exp(&mut self) -> Result<Expression, ParseExpressionError> {
+    pub fn p_exp(&mut self) -> Result<Expression, ParseExpressionError> {
         let left = self.p_lexp()?;
         self.skip_ws();
 
@@ -948,6 +971,8 @@ pub enum ParseTryError {
     Leading,
     #[fail(display = "expected `catch` keyword")]
     Catch,
+    #[fail(display = "invalid pattern for the caught exception")]
+    Pattern(#[fail(cause)]ParsePatternError),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
@@ -1004,6 +1029,8 @@ pub enum ParseLetError {
     Pattern(#[fail(cause)]ParsePatternError),
     #[fail(display = "let expression requires `=` after the left-hand side")]
     EqualsSign,
+    #[fail(display = "let expression requires `;` after the binding")]
+    Semicolon,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]

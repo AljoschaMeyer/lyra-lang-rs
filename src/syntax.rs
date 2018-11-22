@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use either::{Either, Left, Right};
 use num::BigRational;
@@ -17,10 +17,11 @@ pub struct Position {
 pub enum _Source {
     File(PathBuf),
     Eval(Meta),
+    Interactive,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
-pub struct Source(pub Rc<_Source>);
+pub struct Source(pub Arc<_Source>);
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub struct Meta {
@@ -44,6 +45,7 @@ pub struct Throw(pub Box<Expression>);
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Try {
     pub to_try: Box<Expression>,
+    pub caught: Pattern,
     pub catcher: Box<Expression>,
 }
 
@@ -60,17 +62,21 @@ pub struct Id(pub String);
 pub struct Let {
     pub lhs: Pattern,
     pub rhs: Box<Expression>,
+    pub continuing: Box<Expression>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub enum Pattern {
-    Id((Id, Meta)),
+    Id(Id, Meta),
     Map(Vec<(Id, Meta)>),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
-pub struct Fun {
-    pub args: Option<Vec<(Id, Meta)>>, // None if fun uses the `args` keyword
+pub struct Fun(pub Arc<_Fun>);
+
+#[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
+pub struct _Fun {
+    pub args: Vec<(Id, Meta)>,
     pub body: Box<Expression>,
 }
 
@@ -86,6 +92,7 @@ pub struct Expression(pub _Expression, pub Meta);
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub enum _Expression {
     Nil,
+    Args,
     Bool(bool),
     Int(BigRational),
     Float(CmpF64),

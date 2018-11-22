@@ -2,8 +2,9 @@
 
 extern crate either;
 extern crate failure;
-extern crate im;
 #[macro_use] extern crate failure_derive;
+extern crate im;
+#[macro_use] extern crate lazy_static;
 extern crate num;
 extern crate ropey;
 extern crate strtod;
@@ -12,6 +13,7 @@ pub mod value;
 pub mod parser;
 pub mod syntax;
 pub mod evaluate;
+pub mod errors;
 
 use std::cmp::Ordering;
 use ropey::Rope;
@@ -49,7 +51,7 @@ impl Ord for CmpF64 {
 /// iterating over all bytes and comparing them.
 ///
 /// See https://github.com/cessen/ropey/issues/17
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CmpRope(pub Rope);
 
 impl CmpRope {
@@ -58,26 +60,6 @@ impl CmpRope {
     }
 }
 
-impl PartialEq for CmpRope {
-    fn eq(&self, other: &Self) -> bool {
-        let mut other_bytes = other.0.bytes();
-        for byte in self.0.bytes() {
-            match other_bytes.next() {
-                None => return false,
-                Some(other_byte) => {
-                    if byte != other_byte {
-                        return false
-                    }
-                }
-            }
-        }
-
-        match other_bytes.next() {
-            None => return true,
-            Some(_) => return false,
-        }
-    }
-}
 impl Eq for CmpRope {}
 
 impl PartialOrd for CmpRope {
