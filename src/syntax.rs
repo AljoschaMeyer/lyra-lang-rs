@@ -101,6 +101,8 @@ pub enum _Expression {
     Sequence(Vec<Expression>),
     Set(Set),
     Map(Vec<(Expression, Expression)>),
+    Land(Box<Expression>, Box<Expression>),
+    Lor(Box<Expression>, Box<Expression>),
     If(If),
     Throw(Throw),
     Try(Try),

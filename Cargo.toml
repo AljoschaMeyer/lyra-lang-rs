@@ -12,4 +12,5 @@ im = "12.2.0"
 lazy_static = "1.2.0"
 num = "0.2.0"
 ropey = "0.9.2"
+ryu = "0.2.7"
 strtod = { git = "https://github.com/ssbrs/strtod" }

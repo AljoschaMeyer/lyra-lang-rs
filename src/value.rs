@@ -2,10 +2,12 @@ use std::sync::Arc;
 
 use im::{Vector, OrdSet, OrdMap};
 use num::{BigRational, BigInt, ToPrimitive};
+use ropey::{Rope, RopeBuilder};
+use ryu;
 
 use super::{CmpF64, CmpRope};
 use super::syntax::{self, Meta, Source, _Source};
-use super::evaluate::{Env, Evaluation};
+use super::evaluate::Env;
 
 /// Runtime representation of an arbitrary lyra value.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -22,13 +24,13 @@ pub enum Value {
     Sequence(Vector<Object>),
     Set(OrdSet<Object>),
     Map(OrdMap<Object, Object>),
-    Fun(_Fun, Env),
+    Fun(_Fun),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum _Fun {
-    Lyra(syntax::Fun),
-    Rust(fn(Vector<Object>) -> Evaluation),
+    Lyra(syntax::Fun, Env),
+    Rust(fn(Vector<Object>) -> Result<Object, Object>),
 }
 
 impl Value {
@@ -57,6 +59,116 @@ impl Value {
             _Source::Interactive => Value::Nil,
         }
     }
+
+    pub fn to_rope(&self) -> Rope {
+        let mut builder = RopeBuilder::new();
+        self.to_rope_indent(&mut builder, 0);
+        builder.finish()
+    }
+
+    fn to_rope_indent(&self, builder: &mut RopeBuilder, indent: usize) {
+        match self {
+            Value::Nil => builder.append("nil"),
+            Value::Bool(true) => builder.append("true"),
+            Value::Bool(false) => builder.append("false"),
+            Value::Usize(val) => builder.append(&val.to_string()),
+            Value::Isize(val) => builder.append(&val.to_string()),
+            Value::Int(val) => builder.append(&val.to_str_radix(10)),
+            Value::Ratio(val) => {
+                builder.append(&val.numer().to_str_radix(10));
+                builder.append(" / ");
+                builder.append(&val.denom().to_str_radix(10));
+            },
+            Value::Float(val) => {
+                if f64::is_nan(val.0) {
+                    builder.append("NaN");
+                } else if val.0 == std::f64::INFINITY {
+                    builder.append("Inf");
+                } else if val.0 == std::f64::NEG_INFINITY {
+                    builder.append("-Inf");
+                } else {
+                    let mut buffer = ryu::Buffer::new();
+                    builder.append(buffer.format(val.0))
+                }
+            }
+            Value::Char(val) => builder.append(&val.escape_default().to_string()), // XXX escape_default isn't ideal (should be consistent with lyra syntax instead)
+            Value::String(val) => builder.append(&format!("{:?}", &val)), // XXX use more appropriate escapes
+            Value::Sequence(val) => {
+                let len = val.len();
+                if len == 0 {
+                    builder.append("[]");
+                } else {
+                    builder.append("[\n");
+
+                    let ws = make_ws(indent);
+                    builder.append(&ws);
+
+                    for (i, entry) in val.iter().enumerate() {
+                        builder.append(&ws);
+                        entry.0.to_rope_indent(builder, indent + 1);
+                        if i + 1 < len {
+                            builder.append(",\n");
+                        }
+                    }
+
+                    builder.append("]\n");
+                }
+            }
+            Value::Set(val) => {
+                let len = val.len();
+                if len == 0 {
+                    builder.append("@{}");
+                } else {
+                    builder.append("@{\n");
+
+                    let ws = make_ws(indent);
+                    builder.append(&ws);
+
+                    for (i, entry) in val.iter().enumerate() {
+                        builder.append(&ws);
+                        entry.0.to_rope_indent(builder, indent + 1);
+                        if i + 1 < len {
+                            builder.append(",\n");
+                        }
+                    }
+
+                    builder.append("}\n");
+                }
+            }
+            Value::Map(val) => {
+                let len = val.len();
+                if len == 0 {
+                    builder.append("{}");
+                } else {
+                    builder.append("{\n");
+
+                    let ws = make_ws(indent);
+                    builder.append(&ws);
+
+                    for (i, (key, value)) in val.iter().enumerate() {
+                        builder.append(&ws);
+                        key.0.to_rope_indent(builder, indent + 1);
+                        builder.append(": ");
+                        value.0.to_rope_indent(builder, indent + 1);
+                        if i + 1 < len {
+                            builder.append(",\n");
+                        }
+                    }
+
+                    builder.append("}\n");
+                }
+            }
+            Value::Fun(..) => builder.append("[Function]"),
+        }
+    }
+}
+
+fn make_ws(indent: usize) -> String {
+    let mut ws = String::with_capacity((indent + 1) * 2);
+    for _ in 0..=indent {
+        ws.push_str("  ");
+    }
+    ws
 }
 
 impl From<()> for Value {

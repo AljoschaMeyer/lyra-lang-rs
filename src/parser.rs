@@ -76,9 +76,11 @@ impl<'a> Parser<'a> {
 
     /// Skip while the predicate returns true.
     fn skip_while<P: Fn(char) -> bool>(&mut self, p: P) {
-        while let Some(c) = self.next() {
+        while let Some(c) = self.peek() {
             if !p(c) {
                 return;
+            } else {
+                self.skip();
             }
         }
     }
@@ -123,7 +125,7 @@ impl<'a> Parser<'a> {
                         }
                     }
                 }
-                Some(' ') | Some('\n') => {}
+                Some(' ') | Some('\n') => self.skip(),
                 _ => return,
             }
         }
@@ -142,7 +144,7 @@ impl<'a> Parser<'a> {
 
     // Returns true if the input begins with the string, followed by a non-identifier char.
     fn peek_kw(&mut self, kw: &str) -> bool {
-        self.input.starts_with(kw) && (self.input.len() == kw.len() || is_ident_byte(self.input.as_bytes()[kw.len()]))
+        self.input.starts_with(kw) && (self.input.len() == kw.len() || !is_ident_byte(self.input.as_bytes()[kw.len()]))
     }
 
     // Checks whether the input starts with a (well-known) keyword.
@@ -226,7 +228,7 @@ impl<'a> Parser<'a> {
 
             self.skip_while(|c| c.is_ascii_hexdigit() || c == '_');
 
-            let int = BigInt::from_str_radix(&start[2..self.input.len() - start.len()], 16).unwrap();
+            let int = BigInt::from_str_radix(&start[2..start.len() - self.input.len()], 16).unwrap();
             return Ok((Left(BigRational::from_integer(int)), meta));
         } else {
             // parse either a decimal integer or a float
@@ -249,6 +251,7 @@ impl<'a> Parser<'a> {
                 self.skip_while(|c| c.is_ascii_digit());
 
                 if self.peek().unwrap_or('z') == 'E' || self.peek().unwrap_or('z') == 'e' {
+                    self.skip();
                     self.skip_pred(|c| c == '+' || c == '-');
 
                     if !self.expect_pred(|c| c.is_ascii_digit()) {
@@ -258,9 +261,9 @@ impl<'a> Parser<'a> {
                     self.skip_while(|c| c.is_ascii_digit());
                 }
 
-                return Ok((Right(strtod(&start[..self.input.len() - start.len()]).unwrap()), meta));
+                return Ok((Right(strtod(&start[..start.len() - self.input.len()]).unwrap()), meta));
             } else {
-                let int = BigInt::from_str_radix(&start[..self.input.len() - start.len()], 10).unwrap();
+                let int = BigInt::from_str_radix(&start[..start.len() - self.input.len()], 10).unwrap();
                 return Ok((Left(BigRational::from_integer(int)), meta));
             }
         }
@@ -284,9 +287,9 @@ impl<'a> Parser<'a> {
                     None => return Err(ParseCharError::EndOfInput),
                     Some('\'') => c = '\'',
                     Some('\\') => c = '\\',
-                    Some('\n') => c = '\n',
-                    Some('\t') => c = '\t',
-                    Some('\0') => c = '\0',
+                    Some('n') => c = '\n',
+                    Some('t') => c = '\t',
+                    Some('0') => c = '\0',
                     Some('u') => {
                         if !self.expect('{') {
                             return Err(ParseCharError::UnicodeLBrace);
@@ -352,9 +355,9 @@ impl<'a> Parser<'a> {
                         None => return Err(ParseStringError::EndOfInput),
                         Some('"') => decoded.push('"'),
                         Some('\\') => decoded.push('\\'),
-                        Some('\n') => decoded.push('\n'),
-                        Some('\t') => decoded.push('\t'),
-                        Some('\0') => decoded.push('\0'),
+                        Some('n') => decoded.push('\n'),
+                        Some('t') => decoded.push('\t'),
+                        Some('0') => decoded.push('\0'),
                         Some('u') => {
                             if !self.expect('{') {
                                 return Err(ParseStringError::UnicodeLBrace);
@@ -385,7 +388,11 @@ impl<'a> Parser<'a> {
                                 Ok(c) => decoded.push(c),
                             }
                         }
-                        _ => return Err(ParseStringError::Escape),
+                        _ => {
+                            println!("{}", self.input);
+                            return Err(ParseStringError::Escape);
+                        },
+                        // _ => return Err(ParseStringError::Escape),
                     }
                 }
 
@@ -646,7 +653,7 @@ impl<'a> Parser<'a> {
 
         self.skip_while(|c| c.is_ascii_alphanumeric() || c == '_');
 
-        return Ok((Id(start[2..self.input.len() - start.len()].to_string()), meta));
+        return Ok((Id(start[..start.len() - self.input.len()].to_string()), meta));
     }
 
     fn p_pattern(&mut self) -> Result<Pattern, ParsePatternError> {
@@ -807,9 +814,32 @@ impl<'a> Parser<'a> {
         match self.peek() {
             None => Ok(left),
             Some('(') => Ok(self.p_app(left)?.into()),
-            // (operators will happen here once they exist)
+            Some('&') => {
+                let right = Box::new(self.p_land()?);
+                let meta = left.1.clone();
+                Ok(Expression(_Expression::Land(Box::new(left), right), meta))
+            }
+            Some('|') => {
+                let right = Box::new(self.p_lor()?);
+                let meta = left.1.clone();
+                Ok(Expression(_Expression::Lor(Box::new(left), right), meta))
+            }
             Some(_) => Ok(left),
         }
+    }
+
+    fn p_land(&mut self) -> Result<Expression, ParseExpressionError> {
+        if !self.skip_str("&&") {
+            return Err(ParseLandError::Op.into());
+        }
+        self.p_exp()
+    }
+
+    fn p_lor(&mut self) -> Result<Expression, ParseExpressionError> {
+        if !self.skip_str("||") {
+            return Err(ParseLorError::Op.into());
+        }
+        self.p_exp()
     }
 
     fn p_app(&mut self, left: Expression) -> Result<(App, Meta), ParseExpressionError> {
@@ -1060,6 +1090,18 @@ pub enum ParseAppError {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseLandError {
+    #[fail(display = "expected 'and' operator, did not get `&&`")]
+    Op
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseLorError {
+    #[fail(display = "expected 'or' operator, did not get `||`")]
+    Op
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
 pub enum ParseExpressionError {
     #[fail(display = "expected expression, got end of input")]
     Empty,
@@ -1095,6 +1137,10 @@ pub enum ParseExpressionError {
     Fun(#[fail(cause)]ParseFunError),
     #[fail(display = "erroneous function application")]
     App(#[fail(cause)]ParseAppError),
+    #[fail(display = "erroneous 'and' operator")]
+    Land(#[fail(cause)]ParseLandError),
+    #[fail(display = "erroneous 'or' operator")]
+    Lor(#[fail(cause)]ParseLorError),
 }
 
 impl From<ParseCharError> for ParseExpressionError {
@@ -1178,5 +1224,17 @@ impl From<ParseFunError> for ParseExpressionError {
 impl From<ParseAppError> for ParseExpressionError {
     fn from(err: ParseAppError) -> ParseExpressionError {
         ParseExpressionError::App(err)
+    }
+}
+
+impl From<ParseLandError> for ParseExpressionError {
+    fn from(err: ParseLandError) -> ParseExpressionError {
+        ParseExpressionError::Land(err)
+    }
+}
+
+impl From<ParseLorError> for ParseExpressionError {
+    fn from(err: ParseLorError) -> ParseExpressionError {
+        ParseExpressionError::Lor(err)
     }
 }
