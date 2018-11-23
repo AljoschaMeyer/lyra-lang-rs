@@ -17,35 +17,6 @@ pub mod builtins;
 use std::cmp::Ordering;
 use ropey::Rope;
 
-/// A wrapper around f64 that lets two NaNs compare to equal and orders them lower than all other floats.
-#[derive(Clone, Copy, Debug, PartialOrd)]
-pub struct CmpF64(pub f64);
-
-impl PartialEq for CmpF64 {
-    fn eq(&self, other: &CmpF64) -> bool {
-        if self.0.is_nan() && other.0.is_nan() {
-            true
-        } else {
-            self.0 == other.0
-        }
-    }
-}
-impl Eq for CmpF64 {}
-
-impl Ord for CmpF64 {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap_or_else(|| {
-            if self.0.is_nan() && !other.0.is_nan() {
-                Ordering::Less
-            } else if !self.0.is_nan() && other.0.is_nan() {
-                Ordering::Greater
-            } else {
-                Ordering::Equal
-            }
-        })
-    }
-}
-
 /// A wrapper around Rope that naively implements Eq, PartialOrd and Ord in O(n), by
 /// iterating over all bytes and comparing them.
 ///
