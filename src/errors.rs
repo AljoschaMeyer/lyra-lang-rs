@@ -4,33 +4,33 @@ use super::value::*;
 use super::syntax::{Id, Meta};
 
 lazy_static! {
-    static ref FREE_VAR: OrdMap<Object, Object> = {
+    static ref FREE_VAR: OrdMap<Value, Value> = {
         let mut map = OrdMap::new();
-        map.insert(Object("tag".into(), ()), Object("free_identifier".into(), ()));
-        map.insert(Object("description".into(), ()), Object("Tried to evaluate an identifier that has not been bound to a value.".into(), ()));
+        map.insert("tag".into(), "free_identifier".into());
+        map.insert("description".into(), "Tried to evaluate an identifier that has not been bound to a value.".into());
         map
     };
 
-    static ref NON_FUN_CALL: OrdMap<Object, Object> = {
+    static ref NON_FUN_CALL: OrdMap<Value, Value> = {
         let mut map = OrdMap::new();
-        map.insert(Object("tag".into(), ()), Object("non_fun_call".into(), ()));
-        map.insert(Object("description".into(), ()), Object("Tried to invoke a non-function value".into(), ()));
+        map.insert("tag".into(), "non_fun_call".into());
+        map.insert("description".into(), "Tried to invoke a non-function value".into());
         map
     };
 }
 
-pub fn free_identifier(id: &Id, meta: &Meta) -> Object {
+pub fn free_identifier(id: &Id, meta: &Meta) -> Value {
     let mut map = FREE_VAR.clone();
-    map.insert(Object("identifier".into(), ()), Object(id.0.as_str().into(), ()));
-    map.insert(Object("meta".into(), ()), Object::from_meta(meta));
+    map.insert("identifier".into(), id.0.as_str().into());
+    map.insert("meta".into(), Value::from_meta(meta));
 
-    Object(map.into(), ())
+    map.into()
 }
 
-pub fn non_fun_call(val: &Value, meta: &Meta) -> Object {
+pub fn non_fun_call(val: &Value, meta: &Meta) -> Value {
     let mut map = NON_FUN_CALL.clone();
-    map.insert(Object("val".into(), ()), Object(val.clone(), ()));
-    map.insert(Object("meta".into(), ()), Object::from_meta(meta));
+    map.insert("val".into(), val.clone());
+    map.insert("meta".into(), Value::from_meta(meta));
 
-    Object(map.into(), ())
+    map.into()
 }

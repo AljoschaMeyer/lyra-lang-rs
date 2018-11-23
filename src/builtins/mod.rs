@@ -10,42 +10,42 @@ mod bools;
 use self::bools::*;
 
 lazy_static! {
-    static ref TOP_LEVEL: HashMap<Id, Object> = {
+    static ref TOP_LEVEL: HashMap<Id, Value> = {
         let mut map = HashMap::new();
-        map.insert(Id("stringify".to_string()), Object(Value::Fun(_Fun::Rust(stringify)), ()));
-        map.insert(Id("typeof".to_string()), Object(Value::Fun(_Fun::Rust(type_of)), ()));
-        map.insert(Id("land".to_string()), Object(Value::Fun(_Fun::Rust(land)), ()));
-        map.insert(Id("lor".to_string()), Object(Value::Fun(_Fun::Rust(lor)), ()));
+        map.insert(Id("stringify".to_string()), Value::Fun(_Fun::Rust(stringify)));
+        map.insert(Id("typeof".to_string()), Value::Fun(_Fun::Rust(type_of)));
+        map.insert(Id("land".to_string()), Value::Fun(_Fun::Rust(land)));
+        map.insert(Id("lor".to_string()), Value::Fun(_Fun::Rust(lor)));
         map
     };
 }
 
-fn stringify(args: Vector<Object>) -> Result<Object, Object> {
+fn stringify(args: Vector<Value>) -> Result<Value, Value> {
     match args.front() {
-        Some(obj) => Ok(Object(Value::String(Arc::new(CmpRope(obj.0.to_rope()))), ())),
-        None => Ok(Object("nil".into(), ())),
+        Some(val) => Ok(Value::String(Arc::new(CmpRope(val.to_rope())))),
+        None => Ok("nil".into()),
     }
 }
 
-fn type_of(args: Vector<Object>) -> Result<Object, Object> {
+fn type_of(args: Vector<Value>) -> Result<Value, Value> {
     match args.front() {
-        Some(Object(Value::Nil, _)) => Ok(Object("nil".into(), ())),
-        Some(Object(Value::Bool(..), _)) => Ok(Object("bool".into(), ())),
-        Some(Object(Value::Usize(..), _))
-        | Some(Object(Value::Isize(..), _))
-        | Some(Object(Value::Int(..), _))
-        | Some(Object(Value::Ratio(..), _)) => Ok(Object("number".into(), ())),
-        Some(Object(Value::Float(..), _)) => Ok(Object("float".into(), ())),
-        Some(Object(Value::Char(..), _)) => Ok(Object("char".into(), ())),
-        Some(Object(Value::String(..), _)) => Ok(Object("string".into(), ())),
-        Some(Object(Value::Sequence(..), _)) => Ok(Object("sequence".into(), ())),
-        Some(Object(Value::Set(..), _)) => Ok(Object("set".into(), ())),
-        Some(Object(Value::Map(..), _)) => Ok(Object("map".into(), ())),
-        Some(Object(Value::Fun(..), _)) => Ok(Object("function".into(), ())),
-        None => Ok(Object("nil".into(), ())),
+        Some(Value::Nil) => Ok("nil".into()),
+        Some(Value::Bool(..)) => Ok("bool".into()),
+        Some(Value::Usize(..))
+        | Some(Value::Isize(..))
+        | Some(Value::Int(..))
+        | Some(Value::Ratio(..)) => Ok("number".into()),
+        Some(Value::Float(..)) => Ok("float".into()),
+        Some(Value::Char(..)) => Ok("char".into()),
+        Some(Value::String(..)) => Ok("string".into()),
+        Some(Value::Sequence(..)) => Ok("sequence".into()),
+        Some(Value::Set(..)) => Ok("set".into()),
+        Some(Value::Map(..)) => Ok("map".into()),
+        Some(Value::Fun(..)) => Ok("function".into()),
+        None => Ok("nil".into()),
     }
 }
 
-pub fn top_level() -> HashMap<Id, Object> {
+pub fn top_level() -> HashMap<Id, Value> {
     TOP_LEVEL.clone()
 }

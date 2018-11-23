@@ -21,16 +21,16 @@ pub enum Value {
     Float(CmpF64),
     Char(char),
     String(Arc<CmpRope>),
-    Sequence(Vector<Object>),
-    Set(OrdSet<Object>),
-    Map(OrdMap<Object, Object>),
+    Sequence(Vector<Value>),
+    Set(OrdSet<Value>),
+    Map(OrdMap<Value, Value>),
     Fun(_Fun),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum _Fun {
     Lyra(syntax::Fun, Env),
-    Rust(fn(Vector<Object>) -> Result<Object, Object>),
+    Rust(fn(Vector<Value>) -> Result<Value, Value>),
 }
 
 impl Value {
@@ -44,10 +44,10 @@ impl Value {
 
     pub fn from_meta(meta: &Meta) -> Value {
         let mut map = OrdMap::new();
-        map.insert(Object("line".into(), ()), Object(meta.start.line.into(), ()));
-        map.insert(Object("col".into(), ()), Object(meta.start.col.into(), ()));
-        map.insert(Object("offset".into(), ()), Object(meta.start.offset.into(), ()));
-        map.insert(Object("source".into(), ()), Object::from_source(&meta.source));
+        map.insert("line".into(), meta.start.line.into());
+        map.insert("col".into(), meta.start.col.into());
+        map.insert("offset".into(), meta.start.offset.into());
+        map.insert("source".into(), Value::from_source(&meta.source));
 
         Value::Map(map)
     }
@@ -105,7 +105,7 @@ impl Value {
 
                     for (i, entry) in val.iter().enumerate() {
                         builder.append(&ws);
-                        entry.0.to_rope_indent(builder, indent + 1);
+                        entry.to_rope_indent(builder, indent + 1);
                         if i + 1 < len {
                             builder.append(",\n");
                         }
@@ -126,7 +126,7 @@ impl Value {
 
                     for (i, entry) in val.iter().enumerate() {
                         builder.append(&ws);
-                        entry.0.to_rope_indent(builder, indent + 1);
+                        entry.to_rope_indent(builder, indent + 1);
                         if i + 1 < len {
                             builder.append(",\n");
                         }
@@ -147,9 +147,9 @@ impl Value {
 
                     for (i, (key, value)) in val.iter().enumerate() {
                         builder.append(&ws);
-                        key.0.to_rope_indent(builder, indent + 1);
+                        key.to_rope_indent(builder, indent + 1);
                         builder.append(": ");
-                        value.0.to_rope_indent(builder, indent + 1);
+                        value.to_rope_indent(builder, indent + 1);
                         if i + 1 < len {
                             builder.append(",\n");
                         }
@@ -224,39 +224,20 @@ impl From<&str> for Value {
     }
 }
 
-impl From<Vector<Object>> for Value {
-    fn from(exp: Vector<Object>) -> Value {
+impl From<Vector<Value>> for Value {
+    fn from(exp: Vector<Value>) -> Value {
         Value::Sequence(exp)
     }
 }
 
-impl From<OrdSet<Object>> for Value {
-    fn from(exp: OrdSet<Object>) -> Value {
+impl From<OrdSet<Value>> for Value {
+    fn from(exp: OrdSet<Value>) -> Value {
         Value::Set(exp)
     }
 }
 
-impl From<OrdMap<Object, Object>> for Value {
-    fn from(exp: OrdMap<Object, Object>) -> Value {
+impl From<OrdMap<Value, Value>> for Value {
+    fn from(exp: OrdMap<Value, Value>) -> Value {
         Value::Map(exp)
-    }
-}
-
-/// An object is a value with an associated prototype.
-/// TODO make the prototype an actual thing rather than Unit
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Object(pub Value, pub ());
-
-impl Object {
-    pub fn truthyness(&self) -> bool {
-        self.0.truthyness()
-    }
-
-    pub fn from_meta(meta: &Meta) -> Object {
-        Object(Value::from_meta(meta), ())
-    }
-
-    pub fn from_source(src: &Source) -> Object {
-        Object(Value::from_source(src), ())
     }
 }

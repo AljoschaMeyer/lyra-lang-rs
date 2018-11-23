@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn lit_nil() {
         match evaluate(&parse("nil"), Env::root()) {
-            Yay(Object(Value::Nil, _)) => {}
+            Yay(Value::Nil) => {}
             _ => assert!(false),
         }
     }
@@ -125,7 +125,7 @@ mod tests {
     #[test]
     fn lit_args() {
         match evaluate(&parse("args"), Env::root()) {
-            Yay(Object(Value::Sequence(ref args), _)) => assert_eq!(args, &Vector::new()),
+            Yay(Value::Sequence(ref args)) => assert_eq!(args, &Vector::new()),
             _ => assert!(false),
         }
     }
@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn lit_true() {
         match evaluate(&parse("true"), Env::root()) {
-            Yay(Object(Value::Bool(true), _)) => {}
+            Yay(Value::Bool(true)) => {}
             _ => assert!(false),
         }
     }
@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn lit_false() {
         match evaluate(&parse("false"), Env::root()) {
-            Yay(Object(Value::Bool(false), _)) => {}
+            Yay(Value::Bool(false)) => {}
             _ => assert!(false),
         }
     }
@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn lit_small_int() {
         match evaluate(&parse("123"), Env::root()) {
-            Yay(Object(Value::Usize(123), _)) => {}
+            Yay(Value::Usize(123)) => {}
             _ => assert!(false),
         }
     }
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn lit_float() {
         match evaluate(&parse("1.2e-7"), Env::root()) {
-            Yay(Object(Value::Float(CmpF64(fl)), _)) if fl == 1.2e-7 => {}
+            Yay(Value::Float(CmpF64(fl))) if fl == 1.2e-7 => {}
             _ => assert!(false),
         }
     }
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn lit_char() {
         match evaluate(&parse("'💚'"), Env::root()) {
-            Yay(Object(Value::Char('💚'), _)) => {}
+            Yay(Value::Char('💚')) => {}
             _ => assert!(false),
         }
     }
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn lit_char_esc_quote() {
         match evaluate(&parse("'\\''"), Env::root()) {
-            Yay(Object(Value::Char('\''), _)) => {}
+            Yay(Value::Char('\'')) => {}
             _ => assert!(false),
         }
     }
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn lit_char_esc_unicode() {
         match evaluate(&parse("'\u{1F49A}'"), Env::root()) {
-            Yay(Object(Value::Char('💚'), _)) => {}
+            Yay(Value::Char('💚')) => {}
             _ => assert!(false),
         }
     }
@@ -189,7 +189,7 @@ mod tests {
     #[test]
     fn lit_string() {
         match evaluate(&parse(r#""a\u{123}\"'\n\t""#), Env::root()) {
-            Yay(Object(Value::String(rope), _)) => assert_eq!(rope.as_ref(), &CmpRope(Rope::from_str("a\u{123}\"'\n\t"))),
+            Yay(Value::String(rope)) => assert_eq!(rope.as_ref(), &CmpRope(Rope::from_str("a\u{123}\"'\n\t"))),
             _ => assert!(false),
         }
     }
@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn type_of() {
         match evaluate(&parse("typeof({4: @{}, [ 6 ]: @{true, false, 42}})"), Env::root()) {
-            Yay(Object(Value::String(rope), _)) => assert_eq!(rope.as_ref(), &CmpRope(Rope::from_str("map"))),
+            Yay(Value::String(rope)) => assert_eq!(rope.as_ref(), &CmpRope(Rope::from_str("map"))),
             Threw(nope) => {
                 println!("{:#?}", nope);
                 assert!(false)
@@ -209,12 +209,20 @@ mod tests {
     #[test]
     fn lets() {
         match evaluate(&parse("let a = (a) -> a && false; let b = () -> a(true); b() || 42"), Env::root()) {
-            Yay(Object(Value::Bool(true), _)) => {}
+            Yay(Value::Bool(true)) => {}
             Threw(nope) => {
                 println!("{:?}", nope);
                 assert!(false)
             }
             _ => assert!(false)
         }
+    }
+
+    #[test]
+    fn eqs() {
+        assert_eq!(std::f64::NAN == std::f64::NAN, false);
+        assert_eq!(Vector::singleton(std::f64::NAN) == Vector::singleton(std::f64::NAN), false);
+        let single_nan = Vector::singleton(std::f64::NAN);
+        assert_eq!(single_nan, single_nan.clone());
     }
 }
