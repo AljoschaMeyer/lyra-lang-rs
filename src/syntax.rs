@@ -1,10 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use either::{Either, Left, Right};
 use num::BigRational;
-
-use super::CmpF64;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub struct Position {
@@ -95,7 +92,6 @@ pub enum _Expression {
     Args,
     Bool(bool),
     Int(BigRational),
-    Float(CmpF64),
     Char(char),
     String(String),
     Sequence(Vec<Expression>),
@@ -141,13 +137,10 @@ impl From<(String, Meta)> for Expression {
     }
 }
 
-impl From<(Either<BigRational, f64>, Meta)> for Expression {
-    fn from(d: (Either<BigRational, f64>, Meta)) -> Expression {
+impl From<(BigRational, Meta)> for Expression {
+    fn from(d: (BigRational, Meta)) -> Expression {
         let (val, meta) = d;
-        match val {
-            Left(int) => Expression(_Expression::Int(int), meta),
-            Right(float) => Expression(_Expression::Float(CmpF64(float)), meta),
-        }
+        Expression(_Expression::Int(val), meta)
     }
 }
 

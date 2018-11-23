@@ -1,14 +1,11 @@
 #![feature(try_from)]
 
-extern crate either;
 extern crate failure;
 #[macro_use] extern crate failure_derive;
 extern crate im;
 #[macro_use] extern crate lazy_static;
 extern crate num;
 extern crate ropey;
-extern crate ryu;
-extern crate strtod;
 
 pub mod value;
 pub mod parser;
@@ -100,7 +97,7 @@ mod tests {
     use im::Vector;
     use ropey::Rope;
 
-    use super::{CmpF64, CmpRope};
+    use super::CmpRope;
     use super::parser::Parser;
     use super::value::*;
     use super::evaluate::{Env, evaluate, Evaluation::*};
@@ -150,14 +147,6 @@ mod tests {
     fn lit_small_int() {
         match evaluate(&parse("123"), Env::root()) {
             Yay(Value::Usize(123)) => {}
-            _ => assert!(false),
-        }
-    }
-
-    #[test]
-    fn lit_float() {
-        match evaluate(&parse("1.2e-7"), Env::root()) {
-            Yay(Value::Float(CmpF64(fl))) if fl == 1.2e-7 => {}
             _ => assert!(false),
         }
     }
@@ -216,13 +205,5 @@ mod tests {
             }
             _ => assert!(false)
         }
-    }
-
-    #[test]
-    fn eqs() {
-        assert_eq!(std::f64::NAN == std::f64::NAN, false);
-        assert_eq!(Vector::singleton(std::f64::NAN) == Vector::singleton(std::f64::NAN), false);
-        let single_nan = Vector::singleton(std::f64::NAN);
-        assert_eq!(single_nan, single_nan.clone());
     }
 }

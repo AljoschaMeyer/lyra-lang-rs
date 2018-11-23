@@ -1,9 +1,7 @@
 use std::convert::TryFrom;
 use std::sync::Arc;
 
-use either::{Either, Left, Right};
 use num::{BigInt, BigRational, Num};
-use strtod::strtod;
 
 use super::syntax::*;
 
@@ -65,15 +63,6 @@ impl<'a> Parser<'a> {
         let _ = self.next();
     }
 
-    /// Skip one char ahead if the predicate returns true.
-    fn skip_pred<P: FnOnce(char) -> bool>(&mut self, p: P) {
-        if let Some(c) = self.peek() {
-            if p(c) {
-                self.skip();
-            }
-        }
-    }
-
     /// Skip while the predicate returns true.
     fn skip_while<P: Fn(char) -> bool>(&mut self, p: P) {
         while let Some(c) = self.peek() {
@@ -101,11 +90,6 @@ impl<'a> Parser<'a> {
     // Reads the next char, return whether it matched. Returns false on end of input.
     fn expect(&mut self, expected: char) -> bool {
         self.next().map(|c| c == expected).unwrap_or(false)
-    }
-
-    /// Reads the next char, returns whether the predicate returned true.
-    fn expect_pred<P: FnOnce(char) -> bool>(&mut self, p: P) -> bool {
-        self.next().map(p).unwrap_or(false)
     }
 
     // Returns the next byte without consuming it.
@@ -210,62 +194,34 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn p_num(&mut self) -> Result<(Either<BigRational, f64>, Meta), ParseNumError> {
+    fn p_int(&mut self) -> Result<(BigRational, Meta), ParseIntError> {
         let meta = self.meta();
         let start = self.input;
 
-        if self.skip_str("NaN") {
-            return Ok((Right(std::f64::NAN), meta));
-        } else if self.skip_str("Infinity") {
-            return Ok((Right(std::f64::INFINITY), meta));
-        } else if self.skip_str("0x") {
+        if self.skip_str("0x") {
             // parse hexadecimal literal
             match self.next() {
-                None => return Err(ParseNumError::EmptyHex),
+                None => return Err(ParseIntError::EmptyHex),
                 Some(c) if c.is_ascii_hexdigit() => {}
-                Some(_) => return Err(ParseNumError::LeadingHex),
+                Some(_) => return Err(ParseIntError::LeadingHex),
             }
 
             self.skip_while(|c| c.is_ascii_hexdigit() || c == '_');
 
             let int = BigInt::from_str_radix(&start[2..start.len() - self.input.len()], 16).unwrap();
-            return Ok((Left(BigRational::from_integer(int)), meta));
+            return Ok((BigRational::from_integer(int), meta));
         } else {
             // parse either a decimal integer or a float
             match self.next() {
-                None => return Err(ParseNumError::Empty),
+                None => return Err(ParseIntError::Empty),
                 Some(c) if c.is_ascii_digit() => {}
-                Some(_) => return Err(ParseNumError::Leading),
+                Some(_) => return Err(ParseIntError::Leading),
             }
 
             self.skip_while(|c| c.is_ascii_digit() || c == '_');
 
-            if let Some('.') = self.peek() {
-                // parse float
-                self.skip();
-                match self.next() {
-                    None => return Err(ParseNumError::EmptyFractionalPart),
-                    Some('0'...'9') => {}
-                    Some(_) => return Err(ParseNumError::LeadingFractionalPart),
-                }
-                self.skip_while(|c| c.is_ascii_digit());
-
-                if self.peek().unwrap_or('z') == 'E' || self.peek().unwrap_or('z') == 'e' {
-                    self.skip();
-                    self.skip_pred(|c| c == '+' || c == '-');
-
-                    if !self.expect_pred(|c| c.is_ascii_digit()) {
-                        return Err(ParseNumError::EmptyExponent);
-                    }
-
-                    self.skip_while(|c| c.is_ascii_digit());
-                }
-
-                return Ok((Right(strtod(&start[..start.len() - self.input.len()]).unwrap()), meta));
-            } else {
-                let int = BigInt::from_str_radix(&start[..start.len() - self.input.len()], 10).unwrap();
-                return Ok((Left(BigRational::from_integer(int)), meta));
-            }
+            let int = BigInt::from_str_radix(&start[..start.len() - self.input.len()], 10).unwrap();
+            return Ok((BigRational::from_integer(int), meta));
         }
     }
 
@@ -770,7 +726,7 @@ impl<'a> Parser<'a> {
             None => Err(ParseExpressionError::Empty),
             Some('"') => Ok(self.p_string()?.into()),
             Some('\'') => Ok(self.p_char()?.into()),
-            Some('0'...'9') => Ok(self.p_num()?.into()),
+            Some('0'...'9') => Ok(self.p_int()?.into()),
             Some('[') => Ok(self.p_seq()?.into()),
             Some('@') => Ok(self.p_set()?.into()),
             Some('{') => Ok(self.p_map()?.into()),
@@ -876,21 +832,15 @@ impl<'a> Parser<'a> {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseNumError {
-    #[fail(display = "expected number literal, got end of input")]
+pub enum ParseIntError {
+    #[fail(display = "expected integer literal, got end of input")]
     Empty,
-    #[fail(display = "expected number literal, got invalid first digit")]
+    #[fail(display = "expected integer literal, got invalid first digit")]
     Leading,
     #[fail(display = "hex integer literal must contain at least one digit")]
     EmptyHex,
     #[fail(display = "hex integer literal has invalid first digit")]
     LeadingHex,
-    #[fail(display = "decimal point must be followed by at least one digit")]
-    EmptyFractionalPart,
-    #[fail(display = "decimal point must be followed by a decimal digit")]
-    LeadingFractionalPart,
-    #[fail(display = "exponent must be followed by at least one digit")]
-    EmptyExponent,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
@@ -1114,7 +1064,7 @@ pub enum ParseExpressionError {
     #[fail(display = "erroneous string literal")]
     String(#[fail(cause)]ParseStringError),
     #[fail(display = "erroneous number literal")]
-    Num(#[fail(cause)]ParseNumError),
+    Num(#[fail(cause)]ParseIntError),
     #[fail(display = "erroneous sequence literal")]
     Seq(#[fail(cause)]ParseSeqError),
     #[fail(display = "erroneous set literal")]
@@ -1155,8 +1105,8 @@ impl From<ParseStringError> for ParseExpressionError {
     }
 }
 
-impl From<ParseNumError> for ParseExpressionError {
-    fn from(err: ParseNumError) -> ParseExpressionError {
+impl From<ParseIntError> for ParseExpressionError {
+    fn from(err: ParseIntError) -> ParseExpressionError {
         ParseExpressionError::Num(err)
     }
 }

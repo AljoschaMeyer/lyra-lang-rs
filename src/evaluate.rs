@@ -106,7 +106,6 @@ pub fn evaluate(exp: &Expression, env: Arc<Env>) -> Evaluation {
         _Expression::Args => Yay(env.args.clone().into()),
         _Expression::Bool(inner) => Yay(inner.into()),
         _Expression::Int(ref inner) => Yay(inner.into()),
-        _Expression::Float(inner) => Yay(inner.into()),
         _Expression::Char(inner) => Yay(inner.into()),
         _Expression::String(ref inner) => Yay(inner.as_str().into()),
         _Expression::Sequence(ref inners) => {

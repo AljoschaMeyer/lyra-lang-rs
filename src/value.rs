@@ -3,9 +3,8 @@ use std::sync::Arc;
 use im::{Vector, OrdSet, OrdMap};
 use num::{BigRational, BigInt, ToPrimitive};
 use ropey::{Rope, RopeBuilder};
-use ryu;
 
-use super::{CmpF64, CmpRope};
+use super::CmpRope;
 use super::syntax::{self, Meta, Source, _Source};
 use super::evaluate::Env;
 
@@ -18,7 +17,6 @@ pub enum Value {
     Isize(isize),
     Int(BigInt),
     Ratio(BigRational),
-    Float(CmpF64),
     Char(char),
     String(Arc<CmpRope>),
     Sequence(Vector<Value>),
@@ -79,18 +77,6 @@ impl Value {
                 builder.append(" / ");
                 builder.append(&val.denom().to_str_radix(10));
             },
-            Value::Float(val) => {
-                if f64::is_nan(val.0) {
-                    builder.append("NaN");
-                } else if val.0 == std::f64::INFINITY {
-                    builder.append("Inf");
-                } else if val.0 == std::f64::NEG_INFINITY {
-                    builder.append("-Inf");
-                } else {
-                    let mut buffer = ryu::Buffer::new();
-                    builder.append(buffer.format(val.0))
-                }
-            }
             Value::Char(val) => builder.append(&val.escape_default().to_string()), // XXX escape_default isn't ideal (should be consistent with lyra syntax instead)
             Value::String(val) => builder.append(&format!("{:?}", &val)), // XXX use more appropriate escapes
             Value::Sequence(val) => {
@@ -203,12 +189,6 @@ impl From<&BigRational> for Value {
         } else {
             Value::Ratio(exp.clone())
         }
-    }
-}
-
-impl From<CmpF64> for Value {
-    fn from(exp: CmpF64) -> Value {
-        Value::Float(exp)
     }
 }
 

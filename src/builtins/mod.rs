@@ -35,7 +35,6 @@ fn type_of(args: Vector<Value>) -> Result<Value, Value> {
         | Some(Value::Isize(..))
         | Some(Value::Int(..))
         | Some(Value::Ratio(..)) => Ok("number".into()),
-        Some(Value::Float(..)) => Ok("float".into()),
         Some(Value::Char(..)) => Ok("char".into()),
         Some(Value::String(..)) => Ok("string".into()),
         Some(Value::Sequence(..)) => Ok("sequence".into()),
