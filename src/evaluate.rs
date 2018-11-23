@@ -186,7 +186,8 @@ pub fn evaluate(exp: &Expression, env: Arc<Env>) -> Evaluation {
         _Expression::Fun(ref fun) => {
             Yay(Value::Fun(value::_Fun::Lyra(fun.clone(), Env::new_child(env))))
         },
-        _Expression::App(App {ref fun, ref args}) => {
+        _Expression::App(App {ref fun, ref args, tail}) => {
+            // TODO trampoline if tail
             let fun_val = try_eval!(evaluate(fun, env.clone()));
 
             let mut arg_seq = Vector::new();

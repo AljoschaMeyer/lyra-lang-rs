@@ -81,10 +81,20 @@ pub struct _Fun {
 pub struct App {
     pub fun: Box<Expression>,
     pub args: Vec<Expression>,
+    pub tail: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Expression(pub _Expression, pub Meta);
+
+impl Expression {
+    pub fn untail(&mut self) {
+        match self.0 {
+            _Expression::App(App { ref mut tail, .. }) => *tail = false,
+            _ => {}
+        }
+    }
+}
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub enum _Expression {

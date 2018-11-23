@@ -77,7 +77,7 @@ mod tests {
     fn parse(s: &str) -> syntax::Expression {
         let source = syntax::Source(Arc::new(syntax::_Source::Interactive));
         let mut parser = Parser::new(s, source);
-        let exp = parser.p_exp().unwrap();
+        let exp = parser.p_exp(false).unwrap();
         assert!(parser.end());
         exp
     }

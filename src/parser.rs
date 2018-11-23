@@ -373,7 +373,7 @@ impl<'a> Parser<'a> {
             return Ok((seq, meta));
         }
 
-        seq.push(self.p_exp()?);
+        seq.push(self.p_exp(false)?);
 
         loop {
             self.skip_ws();
@@ -382,7 +382,7 @@ impl<'a> Parser<'a> {
                 Some(']') => return Ok((seq, meta)),
                 Some(',') => {
                     self.skip_ws();
-                    seq.push(self.p_exp()?);
+                    seq.push(self.p_exp(false)?);
                 }
                 Some(_) => return Err(ParseSeqError::CommaOrEnd.into()),
             }
@@ -408,7 +408,7 @@ impl<'a> Parser<'a> {
             return Ok((Set(set), meta));
         }
 
-        set.push(self.p_exp()?);
+        set.push(self.p_exp(false)?);
 
         loop {
             self.skip_ws();
@@ -417,7 +417,7 @@ impl<'a> Parser<'a> {
                 Some('}') => return Ok((Set(set), meta)),
                 Some(',') => {
                     self.skip_ws();
-                    set.push(self.p_exp()?);
+                    set.push(self.p_exp(false)?);
                 }
                 Some(_) => return Err(ParseSetError::CommaOrEnd.into()),
             }
@@ -439,7 +439,7 @@ impl<'a> Parser<'a> {
             self.skip();
             return Ok((map, meta));
         }
-        let fst_key = self.p_exp()?;
+        let fst_key = self.p_exp(false)?;
 
         self.skip_ws();
         if !self.expect(':') {
@@ -447,7 +447,7 @@ impl<'a> Parser<'a> {
         }
         self.skip_ws();
 
-        let fst_val = self.p_exp()?;
+        let fst_val = self.p_exp(false)?;
         map.push((fst_key, fst_val));
 
         let mut key;
@@ -462,7 +462,7 @@ impl<'a> Parser<'a> {
                 },
                 Some(',') => {
                     self.skip_ws();
-                    key = Some(self.p_exp()?);
+                    key = Some(self.p_exp(false)?);
 
                     self.skip_ws();
                     if !self.expect(':') {
@@ -470,7 +470,7 @@ impl<'a> Parser<'a> {
                     }
                     self.skip_ws();
 
-                    val = Some(self.p_exp()?);
+                    val = Some(self.p_exp(false)?);
                     map.push((key.take().unwrap(), val.take().unwrap()));
                 }
                 Some(_) => return Err(ParseMapError::CommaOrEnd.into()),
@@ -478,7 +478,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn p_if(&mut self) -> Result<(If, Meta), ParseExpressionError> {
+    fn p_if(&mut self, tail: bool) -> Result<(If, Meta), ParseExpressionError> {
         let meta = self.meta();
         if self.input.len() == 0 {
             return Err(ParseIfError::Empty.into());
@@ -486,19 +486,19 @@ impl<'a> Parser<'a> {
 
         if self.expect_kw("if") {
             self.skip_ws();
-            let cond = Box::new(self.p_exp()?);
+            let cond = Box::new(self.p_exp(false)?);
 
             self.skip_ws();
             if !self.expect_kw("then") {
                 return Err(ParseIfError::Then.into());
             }
             self.skip_ws();
-            let then = Box::new(self.p_exp()?);
+            let then = Box::new(self.p_exp(tail)?);
             self.skip_ws();
 
             if self.expect_kw("else") {
                 self.skip_ws();
-                let else_ = Some(Box::new(self.p_exp()?));
+                let else_ = Some(Box::new(self.p_exp(tail)?));
                 return Ok((If { cond, then, else_ }, meta));
             } else {
                 return Ok((If { cond, then, else_: None }, meta));
@@ -508,7 +508,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn p_throw(&mut self) -> Result<(Throw, Meta), ParseExpressionError> {
+    fn p_throw(&mut self, tail: bool) -> Result<(Throw, Meta), ParseExpressionError> {
         let meta = self.meta();
         if self.input.len() == 0 {
             return Err(ParseThrowError::Empty.into());
@@ -516,13 +516,13 @@ impl<'a> Parser<'a> {
 
         if self.expect_kw("throw") {
             self.skip_ws();
-            return Ok((Throw(Box::new(self.p_exp()?)), meta));
+            return Ok((Throw(Box::new(self.p_exp(tail)?)), meta));
         } else {
             return Err(ParseThrowError::Leading.into());
         }
     }
 
-    fn p_try(&mut self) -> Result<(Try, Meta), ParseExpressionError> {
+    fn p_try(&mut self, tail: bool) -> Result<(Try, Meta), ParseExpressionError> {
         let meta = self.meta();
         if self.input.len() == 0 {
             return Err(ParseTryError::Empty.into());
@@ -530,7 +530,7 @@ impl<'a> Parser<'a> {
 
         if self.expect_kw("try") {
             self.skip_ws();
-            let to_try = Box::new(self.p_exp()?);
+            let to_try = Box::new(self.p_exp(false)?);
 
             self.skip_ws();
             if !self.expect_kw("catch") {
@@ -542,17 +542,17 @@ impl<'a> Parser<'a> {
                 Err(err) => return Err(ParseTryError::Pattern(err).into()),
                 Ok(caught) => {
                     self.skip_ws();
-                    let catcher = Box::new(self.p_exp()?);
+                    let catcher = Box::new(self.p_exp(tail)?);
 
                     return Ok((Try { to_try, caught, catcher }, meta));
                 }
             }
         } else {
-            return Err(ParseIfError::Leading.into());
+            return Err(ParseTryError::Leading.into());
         }
     }
 
-    fn p_pause(&mut self) -> Result<(Pause, Meta), ParseExpressionError> {
+    fn p_pause(&mut self, tail: bool) -> Result<(Pause, Meta), ParseExpressionError> {
         let meta = self.meta();
         if self.input.len() == 0 {
             return Err(ParsePauseError::Empty.into());
@@ -566,7 +566,7 @@ impl<'a> Parser<'a> {
                 Some('i') => {
                     if self.expect_kw("if") {
                         self.skip_ws();
-                        let cond = Some(Box::new(self.p_exp()?));
+                        let cond = Some(Box::new(self.p_exp(false)?));
 
                         self.skip_ws();
                         if !self.expect(';') {
@@ -574,7 +574,7 @@ impl<'a> Parser<'a> {
                         }
 
                         self.skip_ws();
-                        let continuing = Box::new(self.p_exp()?);
+                        let continuing = Box::new(self.p_exp(tail)?);
                         return Ok((Pause { cond, continuing }, meta));
                     } else {
                         return Err(ParsePauseError::AfterKw.into());
@@ -583,7 +583,7 @@ impl<'a> Parser<'a> {
                 Some(';') => {
                     self.skip();
                     self.skip_ws();
-                    let continuing = Box::new(self.p_exp()?);
+                    let continuing = Box::new(self.p_exp(tail)?);
                     return Ok((Pause { cond: None, continuing }, meta));
                 }
                 Some(_) => return Err(ParsePauseError::AfterKw.into()),
@@ -644,7 +644,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn p_let(&mut self) -> Result<(Let, Meta), ParseExpressionError> {
+    fn p_let(&mut self, tail: bool) -> Result<(Let, Meta), ParseExpressionError> {
         let meta = self.meta();
         if self.input.len() == 0 {
             return Err(ParseLetError::Empty.into());
@@ -661,7 +661,7 @@ impl<'a> Parser<'a> {
                     }
 
                     self.skip_ws();
-                    let rhs = Box::new(self.p_exp()?);
+                    let rhs = Box::new(self.p_exp(false)?);
 
                     self.skip_ws();
                     if !self.expect(';') {
@@ -669,7 +669,7 @@ impl<'a> Parser<'a> {
                     }
 
                     self.skip_ws();
-                    let continuing = Box::new(self.p_exp()?);
+                    let continuing = Box::new(self.p_exp(tail)?);
 
                     return Ok((Let { lhs, rhs, continuing }, meta));
                 },
@@ -714,12 +714,12 @@ impl<'a> Parser<'a> {
             return Err(ParseFunError::Arrow.into());
         }
 
-        let body = Box::new(self.p_exp()?);
+        let body = Box::new(self.p_exp(true)?);
         return Ok((Fun(Arc::new(_Fun { args, body })), meta));
     }
 
     // Non-leftrecursive expressions
-    fn p_lexp(&mut self) -> Result<Expression, ParseExpressionError> {
+    fn p_lexp(&mut self, tail: bool) -> Result<Expression, ParseExpressionError> {
         self.skip_ws();
 
         match self.peek() {
@@ -743,15 +743,15 @@ impl<'a> Parser<'a> {
                     } else if self.peek_kw("false") {
                         Ok(self.p_bool().unwrap().into())
                     } else if self.peek_kw("if") {
-                        Ok(self.p_if()?.into())
+                        Ok(self.p_if(tail)?.into())
                     } else if self.peek_kw("let") {
-                        Ok(self.p_let()?.into())
+                        Ok(self.p_let(tail)?.into())
                     } else if self.peek_kw("throw") {
-                        Ok(self.p_throw()?.into())
+                        Ok(self.p_throw(tail)?.into())
                     } else if self.peek_kw("try") {
-                        Ok(self.p_try()?.into())
+                        Ok(self.p_try(tail)?.into())
                     } else if self.peek_kw("pause") {
-                        Ok(self.p_pause()?.into())
+                        Ok(self.p_pause(tail)?.into())
                     } else {
                         Err(ParseExpressionError::NonExpressionKw)
                     }
@@ -763,42 +763,46 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn p_exp(&mut self) -> Result<Expression, ParseExpressionError> {
-        let left = self.p_lexp()?;
+    pub fn p_exp(&mut self, tail: bool) -> Result<Expression, ParseExpressionError> {
+        let mut left = self.p_lexp(tail)?;
         self.skip_ws();
 
         match self.peek() {
             None => Ok(left),
-            Some('(') => Ok(self.p_app(left)?.into()),
+            // TODO unset tail on left if not None
+            Some('(') => Ok(self.p_app(left, tail)?.into()),
             Some('&') => {
-                let right = Box::new(self.p_land()?);
+                left.untail();
+                let right = Box::new(self.p_land(tail)?);
                 let meta = left.1.clone();
                 Ok(Expression(_Expression::Land(Box::new(left), right), meta))
             }
             Some('|') => {
-                let right = Box::new(self.p_lor()?);
+                left.untail();
+                let right = Box::new(self.p_lor(tail)?);
                 let meta = left.1.clone();
                 Ok(Expression(_Expression::Lor(Box::new(left), right), meta))
             }
-            Some(_) => Ok(left),
+            Some(_) => Ok(left), // TODO error instead, this means trailing garbage (can remove `end` method then)
         }
     }
 
-    fn p_land(&mut self) -> Result<Expression, ParseExpressionError> {
+    fn p_land(&mut self, tail: bool) -> Result<Expression, ParseExpressionError> {
         if !self.skip_str("&&") {
             return Err(ParseLandError::Op.into());
         }
-        self.p_exp()
+        self.p_exp(tail)
     }
 
-    fn p_lor(&mut self) -> Result<Expression, ParseExpressionError> {
+    fn p_lor(&mut self, tail: bool) -> Result<Expression, ParseExpressionError> {
         if !self.skip_str("||") {
             return Err(ParseLorError::Op.into());
         }
-        self.p_exp()
+        self.p_exp(tail)
     }
 
-    fn p_app(&mut self, left: Expression) -> Result<(App, Meta), ParseExpressionError> {
+    fn p_app(&mut self, mut left: Expression, tail: bool) -> Result<(App, Meta), ParseExpressionError> {
+        left.untail();
         let meta = left.1.clone();
         let mut args = Vec::new();
 
@@ -811,19 +815,19 @@ impl<'a> Parser<'a> {
         self.skip_ws();
         if let Some(')') = self.peek() {
             self.skip();
-            return Ok((App { fun: Box::new(left), args }, meta));
+            return Ok((App { fun: Box::new(left), args, tail }, meta));
         }
 
-        args.push(self.p_exp()?);
+        args.push(self.p_exp(false)?);
 
         loop {
             self.skip_ws();
             match self.next() {
                 None => return Err(ParseAppError::EndOfInput.into()),
-                Some(')') => return Ok((App { fun: Box::new(left), args }, meta)),
+                Some(')') => return Ok((App { fun: Box::new(left), args, tail }, meta)),
                 Some(',') => {
                     self.skip_ws();
-                    args.push(self.p_exp()?);
+                    args.push(self.p_exp(false)?);
                 }
                 Some(_) => return Err(ParseAppError::CommaOrEnd.into()),
             }
