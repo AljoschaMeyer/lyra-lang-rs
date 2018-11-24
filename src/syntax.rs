@@ -56,16 +56,32 @@ pub struct Pause {
 pub struct Id(pub String);
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
-pub struct Let {
-    pub lhs: Pattern,
-    pub rhs: Box<Expression>,
-    pub continuing: Box<Expression>,
+pub enum Let {
+    Let {
+        lhs: Pattern,
+        rhs: Box<Expression>,
+        continuing: Box<Expression>,
+    },
+    Fun {
+        lhs: Id,
+        rhs: (Fun, Meta),
+        continuing: Box<Expression>
+    },
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub enum Pattern {
     Id(Id, Meta),
     Map(Vec<(Id, Meta)>),
+}
+
+impl Pattern {
+    pub fn is_id(&self) -> bool {
+        match self {
+            Pattern::Id(..) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]

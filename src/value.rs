@@ -27,7 +27,8 @@ pub enum Value {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum _Fun {
-    Lyra(syntax::Fun, Env),
+    LyraLiteral(syntax::Fun, Arc<Env>),
+    // LyraFun(syntax::Fun, Env, UnsafeCell<Weak<syntax::_Fun>>),
     Rust(fn(Vector<Value>) -> Result<Value, Value>),
 }
 

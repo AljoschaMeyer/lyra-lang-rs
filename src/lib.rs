@@ -77,9 +77,18 @@ mod tests {
     fn parse(s: &str) -> syntax::Expression {
         let source = syntax::Source(Arc::new(syntax::_Source::Interactive));
         let mut parser = Parser::new(s, source);
-        let exp = parser.p_exp(false).unwrap();
-        assert!(parser.end());
-        exp
+        match parser.p_exp(false) {
+            Ok(exp) => {
+                assert!(parser.end());
+                exp
+            }
+            Err(err) => {
+                println!("{:?}\n", parser.input);
+                println!("{:?}", parser.position);
+                println!("{:?}", err);
+                panic!()
+            }
+        }
     }
 
     #[test]

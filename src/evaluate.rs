@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use im::{Vector, OrdSet, OrdMap, HashMap};
 
-use super::syntax::*;
+use super::syntax::{self, *};
 use super::value::{self, *};
 use super::errors;
 use super::builtins;
@@ -13,6 +13,7 @@ pub struct Env {
     bindings: HashMap<Id, Value>,
     parent: Option<Arc<Env>>,
     args: Vector<Value>,
+    rec: Id,
 }
 
 impl Env {
@@ -21,24 +22,30 @@ impl Env {
             bindings: builtins::top_level(),
             parent: None,
             args: Vector::new(),
+            rec: Id(String::new()),
         })
     }
 
-    fn new_child(parent: Arc<Env>) -> Env {
+    fn new_child(parent: Arc<Env>, rec: Id) -> Env {
         Env {
             bindings: HashMap::new(),
             parent: Some(parent),
             args: Vector::new(),
+            rec,
         }
     }
 
-    fn get(&self, id: &Id) -> Option<Value> {
-        match self.bindings.get(id) {
-            Some(val) => return Some(val.clone()),
-            None => {
-                match self.parent {
-                    Some(ref parent) => return parent.get(id),
-                    None => return None,
+    fn get(&self, id: &Id) -> Option<Option<Value>> {
+        if self.rec == *id {
+            return Some(None);
+        } else {
+            match self.bindings.get(id) {
+                Some(val) => return Some(Some(val.clone())),
+                None => {
+                    match self.parent {
+                        Some(ref parent) => return parent.get(id),
+                        None => return None,
+                    }
                 }
             }
         }
@@ -100,7 +107,7 @@ macro_rules! try_eval {
 
 /// Evaluate an expression inside an environment. Mutates the environment by adding bindings
 /// for each let expression.
-pub fn evaluate(exp: &Expression, env: Arc<Env>) -> Evaluation {
+pub fn evaluate(exp: &Expression, env: Arc<Env>, self_fn: Option<syntax::Fun>) -> Evaluation {
     match exp.0 {
         _Expression::Nil => Yay(().into()),
         _Expression::Args => Yay(env.args.clone().into()),
@@ -111,92 +118,98 @@ pub fn evaluate(exp: &Expression, env: Arc<Env>) -> Evaluation {
         _Expression::Sequence(ref inners) => {
             let mut seq = Vector::new();
             for inner in inners.iter() {
-                seq.push_back(try_eval!(evaluate(inner, env.clone())));
+                seq.push_back(try_eval!(evaluate(inner, env.clone(), self_fn)));
             }
             Yay(seq.into())
         }
         _Expression::Set(Set(ref inners)) => {
             let mut set = OrdSet::new();
             for inner in inners.iter() {
-                set.insert(try_eval!(evaluate(inner, env.clone())));
+                set.insert(try_eval!(evaluate(inner, env.clone(), self_fn)));
             }
             Yay(set.into())
         }
         _Expression::Map(ref inners) => {
             let mut map = OrdMap::new();
             for inner in inners.iter() {
-                map.insert(try_eval!(evaluate(&inner.0, env.clone())), try_eval!(evaluate(&inner.1, env.clone())));
+                map.insert(try_eval!(evaluate(&inner.0, env.clone(), self_fn)), try_eval!(evaluate(&inner.1, env.clone(), self_fn)));
             }
             Yay(map.into())
         }
         _Expression::If(If {ref cond, ref then, ref else_}) => {
-            let cond_evaluated = try_eval!(evaluate(cond, env.clone()));
+            let cond_evaluated = try_eval!(evaluate(cond, env.clone(), self_fn));
 
             if cond_evaluated.truthyness() {
-                evaluate(then, env)
+                evaluate(then, env, self_fn)
             } else {
-                else_.as_ref().map_or(Evaluation::Yay(Value::Nil), |e| evaluate(e, env))
+                else_.as_ref().map_or(Evaluation::Yay(Value::Nil), |e| evaluate(e, env, self_fn))
             }
         }
         _Expression::Land(ref left, ref right) => {
-            let left_evaluated = try_eval!(evaluate(left, env.clone()));
+            let left_evaluated = try_eval!(evaluate(left, env.clone(), self_fn));
             if left_evaluated.truthyness() {
-                Evaluation::Yay(try_eval!(evaluate(right, env)).truthyness().into())
+                Evaluation::Yay(try_eval!(evaluate(right, env, self_fn)).truthyness().into())
             } else {
                 Evaluation::Yay(false.into())
             }
         }
         _Expression::Lor(ref left, ref right) => {
-            let left_evaluated = try_eval!(evaluate(left, env.clone()));
+            let left_evaluated = try_eval!(evaluate(left, env.clone(), self_fn));
             if left_evaluated.truthyness() {
                 Evaluation::Yay(true.into())
             } else {
-                Evaluation::Yay(try_eval!(evaluate(right, env)).truthyness().into())
+                Evaluation::Yay(try_eval!(evaluate(right, env, self_fn)).truthyness().into())
             }
         }
-        _Expression::Throw(Throw(ref inner)) => Threw(try_eval!(evaluate(inner, env))),
+        _Expression::Throw(Throw(ref inner)) => Threw(try_eval!(evaluate(inner, env, self_fn))),
         _Expression::Try(Try {ref to_try, ref caught, ref catcher}) => {
-            match evaluate(to_try, env.clone()) {
+            match evaluate(to_try, env.clone(), self_fn) {
                 Evaluation::Yay(yay) => Evaluation::Yay(yay),
                 Evaluation::Paused => Evaluation::Paused,
                 Threw(exception) => {
                     let env = env.extend_by_pattern(caught, &exception);
-                    evaluate(catcher, Arc::new(env))
+                    evaluate(catcher, Arc::new(env), self_fn)
                 },
             }
         }
         _Expression::Pause(Pause {ref cond, ref continuing}) => {
             // This does not pause, it just evaluates the condition and then the continuation.
             if let Some(cond) = cond.as_ref() {
-                let _ = try_eval!(evaluate(cond, env.clone()));
+                let _ = try_eval!(evaluate(cond, env.clone(), self_fn));
             }
-            evaluate(continuing, env)
+            evaluate(continuing, env, self_fn)
         },
         _Expression::Id(ref id) => {
             match env.get(id) {
-                Some(val) => Evaluation::Yay(val),
+                Some(Some(val)) => Evaluation::Yay(val),
+                Some(None) => Evaluation::Yay(Value::Fun(value::_Fun::LyraLiteral(syntax::Fun(self_fn.unwrap().0.clone()), env.clone()))),
                 None => Evaluation::Threw(errors::free_identifier(id, &exp.1)),
             }
         },
-        _Expression::Let(Let {ref lhs, ref rhs, ref continuing}) => {
-            let val = try_eval!(evaluate(rhs, env.clone()));
+        _Expression::Let(Let::Let {ref lhs, ref rhs, ref continuing}) => {
+            let val = try_eval!(evaluate(rhs, env.clone(), self_fn));
             let env = env.extend_by_pattern(lhs, &val);
-            evaluate(continuing, Arc::new(env))
+            evaluate(continuing, Arc::new(env), self_fn)
+        },
+        _Expression::Let(Let::Fun {ref lhs, ref rhs, ref continuing}) => {
+            let val = Value::Fun(value::_Fun::LyraLiteral(rhs.0.clone(), Arc::new(Env::new_child(env.clone(), lhs.clone()))));
+            let env = env.extend_by_id(lhs, &val);
+            evaluate(continuing, Arc::new(env), self_fn)
         },
         _Expression::Fun(ref fun) => {
-            Yay(Value::Fun(value::_Fun::Lyra(fun.clone(), Env::new_child(env))))
+            Yay(Value::Fun(value::_Fun::LyraLiteral(fun.clone(), Arc::new(Env::new_child(env, Id(String::new()))))))
         },
         _Expression::App(App {ref fun, ref args, tail}) => {
             // TODO trampoline if tail
-            let fun_val = try_eval!(evaluate(fun, env.clone()));
+            let fun_val = try_eval!(evaluate(fun, env.clone(), self_fn));
 
             let mut arg_seq = Vector::new();
             for arg in args.iter() {
-                arg_seq.push_back(try_eval!(evaluate(arg, env.clone())));
+                arg_seq.push_back(try_eval!(evaluate(arg, env.clone(), self_fn)));
             }
 
             match fun_val {
-                Value::Fun(value::_Fun::Lyra(fun_syntax, fun_env)) => {
+                Value::Fun(value::_Fun::LyraLiteral(fun_syntax, fun_env)) => {
                     let mut eval_env = fun_env.clone();
                     eval_env.args = arg_seq;
 
@@ -204,7 +217,7 @@ pub fn evaluate(exp: &Expression, env: Arc<Env>) -> Evaluation {
                         eval_env = eval_env.extend_by_id(&id.0, eval_env.args.get(i).unwrap_or(&Value::Nil));
                     }
 
-                    evaluate(&fun_syntax.0.body, Arc::new(eval_env))
+                    evaluate(&fun_syntax.0.body, Arc::new(eval_env) Some(fun_syntax.clone()))
                 }
                 Value::Fun(value::_Fun::Rust(native_fun)) => {
                     match native_fun(arg_seq) {

@@ -6,9 +6,9 @@ use num::{BigInt, BigRational, Num};
 use super::syntax::*;
 
 pub struct Parser<'a> {
-    input: &'a str,
+    pub(crate) input: &'a str,
     source: Source,
-    position: Position,
+    pub(crate) position: Position,
 }
 
 impl<'a> Parser<'a> {
@@ -24,18 +24,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Returns true if there are no non-whitespace tokens up until the end of the input (comments
-    /// are considered whitespace).
-    pub fn end(&mut self) -> bool {
-        self.skip_ws();
-        self.input.len() == 0
-    }
-
     fn meta(&self) -> Meta {
         Meta {
             start: self.position,
             source: self.source.clone(),
         }
+    }
+
+    /// Returns true if there are no non-whitespace tokens up until the end of the input (comments
+    /// are considered whitespace).
+    pub fn end(&mut self) -> bool {
+        self.skip_ws();
+        self.input.len() == 0
     }
 
     /// Reads the the next char.
@@ -654,6 +654,43 @@ impl<'a> Parser<'a> {
             self.skip_ws();
             match self.p_pattern() {
                 Err(err) => return Err(ParseLetError::Pattern(err).into()),
+                Ok(Pattern::Id(id, m)) => {
+                    self.skip_ws();
+                    if !self.expect('=') {
+                        return Err(ParseLetError::EqualsSign.into());
+                    }
+
+                    self.skip_ws();
+                    match self.peek() {
+                        Some('(') => {
+                            // Lets containing a function have extra handling to allow recursion
+                            let fun = self.p_fun()?;
+
+                            self.skip_ws();
+                            if !self.expect(';') {
+                                return Err(ParseLetError::Semicolon.into());
+                            }
+
+                            self.skip_ws();
+                            let continuing = Box::new(self.p_exp(tail)?);
+
+                            return Ok((Let::Fun { lhs: id, rhs: fun, continuing }, meta));
+                        },
+                        _ => {
+                            let rhs = Box::new(self.p_exp(false)?);
+
+                            self.skip_ws();
+                            if !self.expect(';') {
+                                return Err(ParseLetError::Semicolon.into());
+                            }
+
+                            self.skip_ws();
+                            let continuing = Box::new(self.p_exp(tail)?);
+
+                            return Ok((Let::Let { lhs: Pattern::Id(id, m), rhs, continuing }, meta));
+                        }
+                    }
+                }
                 Ok(lhs) => {
                     self.skip_ws();
                     if !self.expect('=') {
@@ -671,7 +708,7 @@ impl<'a> Parser<'a> {
                     self.skip_ws();
                     let continuing = Box::new(self.p_exp(tail)?);
 
-                    return Ok((Let { lhs, rhs, continuing }, meta));
+                    return Ok((Let::Let { lhs, rhs, continuing }, meta));
                 },
             }
         } else {
@@ -769,7 +806,6 @@ impl<'a> Parser<'a> {
 
         match self.peek() {
             None => Ok(left),
-            // TODO unset tail on left if not None
             Some('(') => Ok(self.p_app(left, tail)?.into()),
             Some('&') => {
                 left.untail();
@@ -783,7 +819,7 @@ impl<'a> Parser<'a> {
                 let meta = left.1.clone();
                 Ok(Expression(_Expression::Lor(Box::new(left), right), meta))
             }
-            Some(_) => Ok(left), // TODO error instead, this means trailing garbage (can remove `end` method then)
+            Some(_) => Ok(left),
         }
     }
 
@@ -1061,6 +1097,8 @@ pub enum ParseExpressionError {
     Empty,
     #[fail(display = "expected expression, got invalid first character")]
     Leading,
+    #[fail(display = "got trailing non-whitespace character after an expression")]
+    Trailing,
     #[fail(display = "expected expression, got a keyword that does not start an expression")]
     NonExpressionKw,
     #[fail(display = "erroneous char literal")]
