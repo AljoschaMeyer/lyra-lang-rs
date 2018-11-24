@@ -538,13 +538,13 @@ impl<'a> Parser<'a> {
             }
 
             self.skip_ws();
-            match self.p_pattern() {
-                Err(err) => return Err(ParseTryError::Pattern(err).into()),
+            match self.p_id() {
+                Err(err) => return Err(ParseTryError::CaughtId(err).into()),
                 Ok(caught) => {
                     self.skip_ws();
                     let catcher = Box::new(self.p_exp(tail)?);
 
-                    return Ok((Try { to_try, caught, catcher }, meta));
+                    return Ok((Try { to_try, caught: caught.0, catcher }, meta));
                 }
             }
         } else {
@@ -593,7 +593,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn p_id(&mut self) -> Result<(Id, Meta), ParseIdError> {
+    fn p_id(&mut self) -> Result<(String, Meta), ParseIdError> {
         let meta = self.meta();
         if self.starts_with_a_kw() {
             return Err(ParseIdError::Kw);
@@ -609,39 +609,7 @@ impl<'a> Parser<'a> {
 
         self.skip_while(|c| c.is_ascii_alphanumeric() || c == '_');
 
-        return Ok((Id(start[..start.len() - self.input.len()].to_string()), meta));
-    }
-
-    fn p_pattern(&mut self) -> Result<Pattern, ParsePatternError> {
-        match self.peek() {
-            None => return Err(ParsePatternError::Empty),
-            Some('{') => {
-                let mut ids = Vec::new();
-
-                self.skip_ws();
-                ids.push(self.p_id()?);
-
-                loop {
-                    self.skip_ws();
-                    match self.next() {
-                        None => return Err(ParsePatternError::EndOfInput),
-                        Some('}') => return Ok(Pattern::Map(ids)),
-                        Some(',') => {
-                            self.skip_ws();
-                            ids.push(self.p_id()?);
-                        }
-                        Some(_) => return Err(ParsePatternError::CommaOrEnd),
-                    }
-                }
-            },
-            Some('A'...'Z') | Some('a'...'z') | Some('_') => {
-                match self.p_id() {
-                    Err(err) => return Err(ParsePatternError::Id(err)),
-                    Ok(id) => return Ok(Pattern::Id(id.0, id.1)),
-                }
-            }
-            Some(_) => return Err(ParsePatternError::Leading),
-        }
+        return Ok((start[..start.len() - self.input.len()].to_string(), meta));
     }
 
     fn p_let(&mut self, tail: bool) -> Result<(Let, Meta), ParseExpressionError> {
@@ -652,45 +620,8 @@ impl<'a> Parser<'a> {
 
         if self.expect_kw("let") {
             self.skip_ws();
-            match self.p_pattern() {
-                Err(err) => return Err(ParseLetError::Pattern(err).into()),
-                Ok(Pattern::Id(id, m)) => {
-                    self.skip_ws();
-                    if !self.expect('=') {
-                        return Err(ParseLetError::EqualsSign.into());
-                    }
-
-                    self.skip_ws();
-                    match self.peek() {
-                        Some('(') => {
-                            // Lets containing a function have extra handling to allow recursion
-                            let fun = self.p_fun()?;
-
-                            self.skip_ws();
-                            if !self.expect(';') {
-                                return Err(ParseLetError::Semicolon.into());
-                            }
-
-                            self.skip_ws();
-                            let continuing = Box::new(self.p_exp(tail)?);
-
-                            return Ok((Let::Fun { lhs: id, rhs: fun, continuing }, meta));
-                        },
-                        _ => {
-                            let rhs = Box::new(self.p_exp(false)?);
-
-                            self.skip_ws();
-                            if !self.expect(';') {
-                                return Err(ParseLetError::Semicolon.into());
-                            }
-
-                            self.skip_ws();
-                            let continuing = Box::new(self.p_exp(tail)?);
-
-                            return Ok((Let::Let { lhs: Pattern::Id(id, m), rhs, continuing }, meta));
-                        }
-                    }
-                }
+            match self.p_id() {
+                Err(err) => return Err(ParseLetError::Lhs(err).into()),
                 Ok(lhs) => {
                     self.skip_ws();
                     if !self.expect('=') {
@@ -708,7 +639,7 @@ impl<'a> Parser<'a> {
                     self.skip_ws();
                     let continuing = Box::new(self.p_exp(tail)?);
 
-                    return Ok((Let::Let { lhs, rhs, continuing }, meta));
+                    return Ok((Let::Let { lhs: lhs.0, rhs, continuing }, meta));
                 },
             }
         } else {
@@ -991,8 +922,8 @@ pub enum ParseTryError {
     Leading,
     #[fail(display = "expected `catch` keyword")]
     Catch,
-    #[fail(display = "invalid pattern for the caught exception")]
-    Pattern(#[fail(cause)]ParsePatternError),
+    #[fail(display = "invalid id for the caught exception")]
+    CaughtId(#[fail(cause)]ParseIdError),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
@@ -1020,33 +951,13 @@ pub enum ParseIdError {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParsePatternError {
-    #[fail(display = "expected pattern, got end of input")]
-    Empty,
-    #[fail(display = "expected pattern, got invalid first character")]
-    Leading,
-    #[fail(display = "invalid identifier")]
-    Id(#[fail(cause)]ParseIdError),
-    #[fail(display = "reached end of input while parsing a pattern")]
-    EndOfInput,
-    #[fail(display = "expected a comma to continue a pattern, or a closing brace to terminate it")]
-    CommaOrEnd,
-}
-
-impl From<ParseIdError> for ParsePatternError {
-    fn from(err: ParseIdError) -> ParsePatternError {
-        ParsePatternError::Id(err)
-    }
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
 pub enum ParseLetError {
     #[fail(display = "expected let expression, got end of input")]
     Empty,
     #[fail(display = "expected let expression, did not get the `let` keyword")]
     Leading,
     #[fail(display = "invalid left-hand side")]
-    Pattern(#[fail(cause)]ParsePatternError),
+    Lhs(#[fail(cause)]ParseIdError),
     #[fail(display = "let expression requires `=` after the left-hand side")]
     EqualsSign,
     #[fail(display = "let expression requires `;` after the binding")]

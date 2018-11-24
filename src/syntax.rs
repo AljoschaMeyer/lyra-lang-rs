@@ -42,7 +42,7 @@ pub struct Throw(pub Box<Expression>);
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Try {
     pub to_try: Box<Expression>,
-    pub caught: Pattern,
+    pub caught: String,
     pub catcher: Box<Expression>,
 }
 
@@ -52,35 +52,12 @@ pub struct Pause {
     pub continuing: Box<Expression>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord, Hash)]
-pub struct Id(pub String);
-
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub enum Let {
     Let {
-        lhs: Pattern,
+        lhs: String,
         rhs: Box<Expression>,
         continuing: Box<Expression>,
-    },
-    Fun {
-        lhs: Id,
-        rhs: (Fun, Meta),
-        continuing: Box<Expression>
-    },
-}
-
-#[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
-pub enum Pattern {
-    Id(Id, Meta),
-    Map(Vec<(Id, Meta)>),
-}
-
-impl Pattern {
-    pub fn is_id(&self) -> bool {
-        match self {
-            Pattern::Id(..) => true,
-            _ => false,
-        }
     }
 }
 
@@ -89,7 +66,7 @@ pub struct Fun(pub Arc<_Fun>);
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct _Fun {
-    pub args: Vec<(Id, Meta)>,
+    pub args: Vec<(String, Meta)>,
     pub body: Box<Expression>,
 }
 
@@ -129,7 +106,7 @@ pub enum _Expression {
     Throw(Throw),
     Try(Try),
     Pause(Pause),
-    Id(Id),
+    String(String),
     Let(Let),
     Fun(Fun),
     App(App)
@@ -216,13 +193,6 @@ impl From<(Pause, Meta)> for Expression {
     fn from(d: (Pause, Meta)) -> Expression {
         let (val, meta) = d;
         Expression(_Expression::Pause(val), meta)
-    }
-}
-
-impl From<(Id, Meta)> for Expression {
-    fn from(d: (Id, Meta)) -> Expression {
-        let (val, meta) = d;
-        Expression(_Expression::Id(val), meta)
     }
 }
 
