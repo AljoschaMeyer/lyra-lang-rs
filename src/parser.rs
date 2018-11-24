@@ -1,4 +1,7 @@
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::convert::TryFrom;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use num::{BigInt, BigRational, Num};
@@ -137,13 +140,13 @@ impl<'a> Parser<'a> {
             return self.input.len() == 2 || !is_ident_byte(self.input.as_bytes()[2]);
         } else if self.input.starts_with("nil") ||
             self.input.starts_with("let") ||
+            self.input.starts_with("rec") ||
             self.input.starts_with("try") {
             return self.input.len() == 3 || !is_ident_byte(self.input.as_bytes()[3]);
         } else if self.input.starts_with("true") || self.input.starts_with("args") {
             return self.input.len() == 4 || !is_ident_byte(self.input.as_bytes()[4]);
         } else if self.input.starts_with("false") ||
             self.input.starts_with("throw") ||
-            self.input.starts_with("pause") ||
             self.input.starts_with("trace") {
             return self.input.len() == 5 || !is_ident_byte(self.input.as_bytes()[5]);
         } else {
@@ -544,7 +547,7 @@ impl<'a> Parser<'a> {
                     self.skip_ws();
                     let catcher = Box::new(self.p_exp(tail)?);
 
-                    return Ok((Try { to_try, caught: caught.0, catcher }, meta));
+                    return Ok((Try { to_try, caught, catcher }, meta));
                 }
             }
         } else {
@@ -552,48 +555,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn p_pause(&mut self, tail: bool) -> Result<(Pause, Meta), ParseExpressionError> {
-        let meta = self.meta();
-        if self.input.len() == 0 {
-            return Err(ParsePauseError::Empty.into());
-        }
-
-        if self.expect_kw("pause") {
-            self.skip_ws();
-
-            match self.peek() {
-                None => return Err(ParsePauseError::EndOfInputAfterKeyword.into()),
-                Some('i') => {
-                    if self.expect_kw("if") {
-                        self.skip_ws();
-                        let cond = Some(Box::new(self.p_exp(false)?));
-
-                        self.skip_ws();
-                        if !self.expect(';') {
-                            return Err(ParsePauseError::AfterCond.into());
-                        }
-
-                        self.skip_ws();
-                        let continuing = Box::new(self.p_exp(tail)?);
-                        return Ok((Pause { cond, continuing }, meta));
-                    } else {
-                        return Err(ParsePauseError::AfterKw.into());
-                    }
-                }
-                Some(';') => {
-                    self.skip();
-                    self.skip_ws();
-                    let continuing = Box::new(self.p_exp(tail)?);
-                    return Ok((Pause { cond: None, continuing }, meta));
-                }
-                Some(_) => return Err(ParsePauseError::AfterKw.into()),
-            }
-        } else {
-            return Err(ParsePauseError::Leading.into());
-        }
-    }
-
-    fn p_id(&mut self) -> Result<(String, Meta), ParseIdError> {
+    fn p_id(&mut self) -> Result<Id, ParseIdError> {
         let meta = self.meta();
         if self.starts_with_a_kw() {
             return Err(ParseIdError::Kw);
@@ -609,7 +571,7 @@ impl<'a> Parser<'a> {
 
         self.skip_while(|c| c.is_ascii_alphanumeric() || c == '_');
 
-        return Ok((start[..start.len() - self.input.len()].to_string(), meta));
+        return Ok(Id(start[..start.len() - self.input.len()].to_string(), meta));
     }
 
     fn p_let(&mut self, tail: bool) -> Result<(Let, Meta), ParseExpressionError> {
@@ -639,11 +601,77 @@ impl<'a> Parser<'a> {
                     self.skip_ws();
                     let continuing = Box::new(self.p_exp(tail)?);
 
-                    return Ok((Let::Let { lhs: lhs.0, rhs, continuing }, meta));
+                    return Ok((Let { lhs, rhs, continuing }, meta));
                 },
             }
         } else {
             return Err(ParseLetError::Leading.into());
+        }
+    }
+
+    fn p_rec(&mut self, tail: bool) -> Result<(Rec, Meta), ParseExpressionError> {
+        let meta = self.meta();
+        if self.input.len() == 0 {
+            return Err(ParseRecError::Empty.into());
+        }
+
+        if self.expect_kw("rec") {
+            self.skip_ws();
+
+            if let Some('{') = self.peek() {
+                self.skip();
+
+                let mut bindings = Vec::new();
+
+                loop {
+                    self.skip_ws();
+                    if let Some('}') = self.peek() {
+                        self.skip();
+                        self.skip_ws();
+                        let continuing = Box::new(self.p_exp(tail)?);
+                        return Ok((Rec { bindings: bindings, continuing }, meta));
+                    } else {
+                        match self.p_id() {
+                            Err(err) => return Err(ParseRecError::Lhs(err).into()),
+                            Ok(lhs) => {
+                                self.skip_ws();
+                                if !self.expect('=') {
+                                    return Err(ParseRecError::EqualsSign.into());
+                                }
+
+                                self.skip_ws();
+                                let rhs = self.p_fun()?;
+                                bindings.push((lhs, rhs.0));
+                            },
+                        }
+                    }
+                }
+            } else {
+                match self.p_id() {
+                    Err(err) => return Err(ParseRecError::Lhs(err).into()),
+                    Ok(lhs) => {
+                        self.skip_ws();
+                        if !self.expect('=') {
+                            return Err(ParseRecError::EqualsSign.into());
+                        }
+
+                        self.skip_ws();
+                        let rhs = self.p_fun()?;
+
+                        self.skip_ws();
+                        if !self.expect(';') {
+                            return Err(ParseRecError::Semicolon.into());
+                        }
+
+                        self.skip_ws();
+                        let continuing = Box::new(self.p_exp(tail)?);
+
+                        return Ok((Rec { bindings: vec![(lhs, rhs.0)], continuing }, meta));
+                    },
+                }
+            }
+        } else {
+            return Err(ParseRecError::Leading.into());
         }
     }
 
@@ -714,12 +742,12 @@ impl<'a> Parser<'a> {
                         Ok(self.p_if(tail)?.into())
                     } else if self.peek_kw("let") {
                         Ok(self.p_let(tail)?.into())
+                    } else if self.peek_kw("rec") {
+                        Ok(self.p_rec(tail)?.into())
                     } else if self.peek_kw("throw") {
                         Ok(self.p_throw(tail)?.into())
                     } else if self.peek_kw("try") {
                         Ok(self.p_try(tail)?.into())
-                    } else if self.peek_kw("pause") {
-                        Ok(self.p_pause(tail)?.into())
                     } else {
                         Err(ParseExpressionError::NonExpressionKw)
                     }
@@ -927,20 +955,6 @@ pub enum ParseTryError {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParsePauseError {
-    #[fail(display = "expected pause expression, got end of input")]
-    Empty,
-    #[fail(display = "expected pause expression, did not get the `pause` keyword")]
-    Leading,
-    #[fail(display = "pause keyword must be followed by a semicolon or the if keyword")]
-    EndOfInputAfterKeyword, // separate variant to support repls
-    #[fail(display = "pause keyword must be followed by a semicolon or the if keyword")]
-    AfterKw,
-    #[fail(display = "pause condition must be followed by a semicolon")]
-    AfterCond,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
 pub enum ParseIdError {
     #[fail(display = "expected identifier, got end of input")]
     Empty,
@@ -956,11 +970,25 @@ pub enum ParseLetError {
     Empty,
     #[fail(display = "expected let expression, did not get the `let` keyword")]
     Leading,
-    #[fail(display = "invalid left-hand side")]
+    #[fail(display = "invalid left-hand side of let expression")]
     Lhs(#[fail(cause)]ParseIdError),
     #[fail(display = "let expression requires `=` after the left-hand side")]
     EqualsSign,
     #[fail(display = "let expression requires `;` after the binding")]
+    Semicolon,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseRecError {
+    #[fail(display = "expected rec expression, got end of input")]
+    Empty,
+    #[fail(display = "expected rec expression, did not get the `rec` keyword")]
+    Leading,
+    #[fail(display = "invalid left-hand side of rec expression")]
+    Lhs(#[fail(cause)]ParseIdError),
+    #[fail(display = "rec expression requires `=` after the left-hand side")]
+    EqualsSign,
+    #[fail(display = "rec expression requires `;` after the binding")]
     Semicolon,
 }
 
@@ -1030,12 +1058,12 @@ pub enum ParseExpressionError {
     Throw(#[fail(cause)]ParseThrowError),
     #[fail(display = "erroneous try expression")]
     Try(#[fail(cause)]ParseTryError),
-    #[fail(display = "erroneous pause expression")]
-    Pause(#[fail(cause)]ParsePauseError),
     #[fail(display = "erroneous identifier")]
     Id(#[fail(cause)]ParseIdError),
     #[fail(display = "erroneous let expression")]
     Let(#[fail(cause)]ParseLetError),
+    #[fail(display = "erroneous rec expression")]
+    Rec(#[fail(cause)]ParseRecError),
     #[fail(display = "erroneous function literal")]
     Fun(#[fail(cause)]ParseFunError),
     #[fail(display = "erroneous function application")]
@@ -1100,12 +1128,6 @@ impl From<ParseTryError> for ParseExpressionError {
     }
 }
 
-impl From<ParsePauseError> for ParseExpressionError {
-    fn from(err: ParsePauseError) -> ParseExpressionError {
-        ParseExpressionError::Pause(err)
-    }
-}
-
 impl From<ParseIdError> for ParseExpressionError {
     fn from(err: ParseIdError) -> ParseExpressionError {
         ParseExpressionError::Id(err)
@@ -1115,6 +1137,12 @@ impl From<ParseIdError> for ParseExpressionError {
 impl From<ParseLetError> for ParseExpressionError {
     fn from(err: ParseLetError) -> ParseExpressionError {
         ParseExpressionError::Let(err)
+    }
+}
+
+impl From<ParseRecError> for ParseExpressionError {
+    fn from(err: ParseRecError) -> ParseExpressionError {
+        ParseExpressionError::Rec(err)
     }
 }
 
@@ -1141,3 +1169,32 @@ impl From<ParseLorError> for ParseExpressionError {
         ParseExpressionError::Lor(err)
     }
 }
+
+// struct Scope(Rc<(RefCell<HashSet<String>>, Option<Scope>)>);
+//
+// impl Scope {
+//     fn top_level() -> Scope {
+//         let builtins = vec!["to_string", "typeof", "and", "or"];
+//         let set = builtins.iter().map(|s| s.to_string()).collect();
+//         Scope(Rc::new((RefCell::new(set), None)))
+//     }
+//
+//     fn child(&self) -> Scope {
+//         Scope(Rc::new((RefCell::new(HashSet::new()), Some(Scope(self.0.clone())))))
+//     }
+//
+//     fn insert(&mut self, id: &str) {
+//         (self.0).0.borrow_mut().insert(id.to_string());
+//     }
+//
+//     fn is_free(&self, id: &str) -> bool {
+//         if (self.0).0.borrow().contains(id) {
+//             return false;
+//         } else {
+//             match (self.0).1 {
+//                 None => return true,
+//                 Some(ref parent) => return parent.is_free(id),
+//             }
+//         }
+//     }
+// }

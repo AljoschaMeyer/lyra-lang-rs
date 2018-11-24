@@ -26,6 +26,19 @@ pub struct Meta {
     pub source: Source,
 }
 
+impl Meta {
+    pub fn none() -> Meta {
+        Meta {
+            start: Position {
+                offset: 0,
+                line: 0,
+                col: 0
+            },
+            source: Source(Arc::new(_Source::Interactive)),
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Set(pub Vec<Expression>);
 
@@ -42,23 +55,24 @@ pub struct Throw(pub Box<Expression>);
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Try {
     pub to_try: Box<Expression>,
-    pub caught: String,
+    pub caught: Id,
     pub catcher: Box<Expression>,
 }
 
+#[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord, Hash)]
+pub struct Id(pub String, pub Meta);
+
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
-pub struct Pause {
-    pub cond: Option<Box<Expression>>,
+pub struct Let {
+    pub lhs: Id,
+    pub rhs: Box<Expression>,
     pub continuing: Box<Expression>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
-pub enum Let {
-    Let {
-        lhs: String,
-        rhs: Box<Expression>,
-        continuing: Box<Expression>,
-    }
+pub struct Rec {
+    pub bindings: Vec<(Id, Fun)>,
+    pub continuing: Box<Expression>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -66,7 +80,7 @@ pub struct Fun(pub Arc<_Fun>);
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct _Fun {
-    pub args: Vec<(String, Meta)>,
+    pub args: Vec<Id>,
     pub body: Box<Expression>,
 }
 
@@ -105,9 +119,9 @@ pub enum _Expression {
     If(If),
     Throw(Throw),
     Try(Try),
-    Pause(Pause),
-    String(String),
+    Id(Id),
     Let(Let),
+    Rec(Rec),
     Fun(Fun),
     App(App)
 }
@@ -189,10 +203,10 @@ impl From<(Try, Meta)> for Expression {
     }
 }
 
-impl From<(Pause, Meta)> for Expression {
-    fn from(d: (Pause, Meta)) -> Expression {
-        let (val, meta) = d;
-        Expression(_Expression::Pause(val), meta)
+impl From<Id> for Expression {
+    fn from(val: Id) -> Expression {
+        let meta = val.1.clone();
+        Expression(_Expression::Id(val), meta)
     }
 }
 
@@ -200,6 +214,13 @@ impl From<(Let, Meta)> for Expression {
     fn from(d: (Let, Meta)) -> Expression {
         let (val, meta) = d;
         Expression(_Expression::Let(val), meta)
+    }
+}
+
+impl From<(Rec, Meta)> for Expression {
+    fn from(d: (Rec, Meta)) -> Expression {
+        let (val, meta) = d;
+        Expression(_Expression::Rec(val), meta)
     }
 }
 

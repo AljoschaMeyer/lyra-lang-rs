@@ -2,7 +2,7 @@ use im::Vector;
 
 use super::super::value::*;
 
-pub fn land(args: Vector<Value>) -> Result<Value, Value> {
+pub fn and(args: Vector<Value>) -> Result<Value, Value> {
     for val in args.iter() {
         if !val.truthyness() {
             return Ok(Value::Bool(false));
@@ -12,7 +12,7 @@ pub fn land(args: Vector<Value>) -> Result<Value, Value> {
     return Ok(Value::Bool(true));
 }
 
-pub fn lor(args: Vector<Value>) -> Result<Value, Value> {
+pub fn or(args: Vector<Value>) -> Result<Value, Value> {
     for val in args.iter() {
         if val.truthyness() {
             return Ok(Value::Bool(true));
