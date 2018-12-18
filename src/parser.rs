@@ -1,8 +1,3 @@
-use std::convert::TryFrom;
-use std::sync::Arc;
-
-use num::{BigInt, BigRational, Num};
-
 use super::syntax::*;
 
 pub struct Parser<'a> {
@@ -134,25 +129,13 @@ impl<'a> Parser<'a> {
     // Checks whether the input starts with a (well-known) keyword.
     fn starts_with_a_kw(&mut self) -> bool {
         // TODO update as keywords are added
-        // if self.input.starts_with("if") {
-        //     return self.input.len() == 2 || !is_ident_byte(self.input.as_bytes()[2]);
-        // } else
-        if self.input.starts_with("nil")
-        // ||
-        //     self.input.starts_with("let") ||
-        //     self.input.starts_with("rec") ||
-        //     self.input.starts_with("try")
-            {
+        if self.input.starts_with("nil") {
             return self.input.len() == 3 || !is_ident_byte(self.input.as_bytes()[3]);
-        }
-        // else if self.input.starts_with("true") || self.input.starts_with("args") {
-        //     return self.input.len() == 4 || !is_ident_byte(self.input.as_bytes()[4]);
-        // } else if self.input.starts_with("false") ||
-        //     self.input.starts_with("throw") ||
-        //     self.input.starts_with("trace") {
-        //     return self.input.len() == 5 || !is_ident_byte(self.input.as_bytes()[5]);
-        // }
-        else {
+        } else if self.input.starts_with("true") {
+            return self.input.len() == 4 || !is_ident_byte(self.input.as_bytes()[4]);
+        } else if self.input.starts_with("false") {
+            return self.input.len() == 5 || !is_ident_byte(self.input.as_bytes()[5]);
+        } else {
             false
         }
     }
@@ -172,856 +155,87 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // fn p_bool(&mut self) -> Option<(bool, Meta)> {
-    //     let meta = self.meta();
-    //     match self.peek() {
-    //         None => None,
-    //
-    //         Some('t') => if self.expect_kw("true") {
-    //             Some((true, meta))
-    //         } else {
-    //             None
-    //         }
-    //
-    //         Some(_) => if self.expect_kw("false") {
-    //             Some((false, meta))
-    //         } else {
-    //             None
-    //         }
-    //     }
-    // }
-
-    fn p_int(&mut self) -> Result<(BigRational, Meta), ParseIntError> {
+    fn p_bool(&mut self) -> Option<(bool, Meta)> {
         let meta = self.meta();
-        let start = self.input;
+        match self.peek() {
+            None => None,
 
-        if self.skip_str("0x") {
-            // parse hexadecimal literal
-            match self.next() {
-                None => return Err(ParseIntError::EmptyHex),
-                Some(c) if c.is_ascii_hexdigit() => {}
-                Some(_) => return Err(ParseIntError::LeadingHex),
-            }
-
-            self.skip_while(|c| c.is_ascii_hexdigit() || c == '_');
-
-            let int = BigInt::from_str_radix(&start[2..start.len() - self.input.len()], 16).unwrap();
-            return Ok((BigRational::from_integer(int), meta));
-        } else {
-            // parse either a decimal integer or a float
-            match self.next() {
-                None => return Err(ParseIntError::Empty),
-                Some(c) if c.is_ascii_digit() => {}
-                Some(_) => return Err(ParseIntError::Leading),
-            }
-
-            self.skip_while(|c| c.is_ascii_digit() || c == '_');
-
-            let int = BigInt::from_str_radix(&start[..start.len() - self.input.len()], 10).unwrap();
-            return Ok((BigRational::from_integer(int), meta));
-        }
-    }
-
-    fn p_char(&mut self) -> Result<(char, Meta), ParseCharError> {
-        let meta = self.meta();
-        match self.next() {
-            None => return Err(ParseCharError::Empty),
-            Some('\'') => {}
-            Some(_) => return Err(ParseCharError::Leading),
-        }
-
-        let c;
-
-        match self.next() {
-            None => return Err(ParseCharError::EndOfInput),
-
-            Some('\\') => {
-                match self.next() {
-                    None => return Err(ParseCharError::EndOfInput),
-                    Some('\'') => c = '\'',
-                    Some('\\') => c = '\\',
-                    Some('n') => c = '\n',
-                    Some('t') => c = '\t',
-                    Some('0') => c = '\0',
-                    Some('u') => {
-                        if !self.expect('{') {
-                            return Err(ParseCharError::UnicodeLBrace);
-                        }
-
-                        let mut count = 0;
-                        let mut acc = 0;
-                        let mut done = false;
-
-                        while !done {
-                            match self.next() {
-                                None => return Err(ParseCharError::EndOfInput),
-                                Some('}') => done = true,
-                                Some(c) if c.is_ascii_hexdigit() => {
-                                    if count == 6 {
-                                        return Err(ParseCharError::UnicodeTooLong);
-                                    }
-                                    acc <<= 4;
-                                    acc += c.to_digit(16).unwrap();
-                                    count += 1;
-                                }
-                                _ => return Err(ParseCharError::UnicodeDigit),
-                            }
-                        }
-
-                        match char::try_from(acc) {
-                            Err(_) => return Err(ParseCharError::UnicodeScalar),
-                            Ok(ch) => c = ch,
-                        }
-                    }
-                    _ => return Err(ParseCharError::Escape),
-                }
-            }
-
-            Some(ch) => c = ch,
-        }
-
-        match self.next() {
-            None => return Err(ParseCharError::EndOfInput),
-            Some('\'') => return Ok((c, meta)),
-            Some(_) => return Err(ParseCharError::TooLong),
-        }
-    }
-
-    fn p_string(&mut self) -> Result<(String, Meta), ParseStringError> {
-        let meta = self.meta();
-        let mut decoded = String::new();
-
-        match self.next() {
-            None => return Err(ParseStringError::Empty),
-            Some('"') => {}
-            Some(_) => return Err(ParseStringError::Leading),
-        }
-
-        loop {
-            match self.next() {
-                None => return Err(ParseStringError::EndOfInput),
-
-                Some('"') => return Ok((decoded, meta)),
-
-                Some('\\') => {
-                    match self.next() {
-                        None => return Err(ParseStringError::EndOfInput),
-                        Some('"') => decoded.push('"'),
-                        Some('\\') => decoded.push('\\'),
-                        Some('n') => decoded.push('\n'),
-                        Some('t') => decoded.push('\t'),
-                        Some('0') => decoded.push('\0'),
-                        Some('u') => {
-                            if !self.expect('{') {
-                                return Err(ParseStringError::UnicodeLBrace);
-                            }
-
-                            let mut count = 0;
-                            let mut acc = 0;
-                            let mut done = false;
-
-                            while !done {
-                                match self.next() {
-                                    None => return Err(ParseStringError::EndOfInput),
-                                    Some('}') => done = true,
-                                    Some(c) if c.is_ascii_hexdigit() => {
-                                        if count == 6 {
-                                            return Err(ParseStringError::UnicodeTooLong);
-                                        }
-                                        acc <<= 4;
-                                        acc += c.to_digit(16).unwrap();
-                                        count += 1;
-                                    }
-                                    _ => return Err(ParseStringError::UnicodeDigit),
-                                }
-                            }
-
-                            match char::try_from(acc) {
-                                Err(_) => return Err(ParseStringError::UnicodeScalar),
-                                Ok(c) => decoded.push(c),
-                            }
-                        }
-                        _ => {
-                            println!("{}", self.input);
-                            return Err(ParseStringError::Escape);
-                        },
-                        // _ => return Err(ParseStringError::Escape),
-                    }
-                }
-
-                Some(c) => decoded.push(c),
-            }
-        }
-    }
-
-    fn p_seq(&mut self) -> Result<(Vec<Expression>, Meta), ParseExpressionError> {
-        let meta = self.meta();
-        let mut seq = Vec::new();
-
-        match self.next() {
-            None => return Err(ParseSeqError::Empty.into()),
-            Some('[') => {}
-            Some(_) => return Err(ParseSeqError::Leading.into()),
-        }
-
-        self.skip_ws();
-        if let Some(']') = self.peek() {
-            self.skip();
-            return Ok((seq, meta));
-        }
-
-        seq.push(self.p_exp(false)?);
-
-        loop {
-            self.skip_ws();
-            match self.next() {
-                None => return Err(ParseSeqError::EndOfInput.into()),
-                Some(']') => return Ok((seq, meta)),
-                Some(',') => {
-                    self.skip_ws();
-                    seq.push(self.p_exp(false)?);
-                }
-                Some(_) => return Err(ParseSeqError::CommaOrEnd.into()),
-            }
-        }
-    }
-
-    fn p_set(&mut self) -> Result<(Set, Meta), ParseExpressionError> {
-        let meta = self.meta();
-        let mut set = Vec::new();
-
-        match self.next() {
-            None => return Err(ParseSetError::Empty.into()),
-            Some('@') => {}
-            Some(_) => return Err(ParseSetError::Leading.into()),
-        }
-        if !self.expect('{') {
-            return Err(ParseSetError::OpeningBrace.into());
-        }
-
-        self.skip_ws();
-        if let Some('}') = self.peek() {
-            self.skip();
-            return Ok((Set(set), meta));
-        }
-
-        set.push(self.p_exp(false)?);
-
-        loop {
-            self.skip_ws();
-            match self.next() {
-                None => return Err(ParseSetError::EndOfInput.into()),
-                Some('}') => return Ok((Set(set), meta)),
-                Some(',') => {
-                    self.skip_ws();
-                    set.push(self.p_exp(false)?);
-                }
-                Some(_) => return Err(ParseSetError::CommaOrEnd.into()),
-            }
-        }
-    }
-
-    fn p_map(&mut self) -> Result<(Vec<(Expression, Expression)>, Meta), ParseExpressionError> {
-        let meta = self.meta();
-        let mut map = Vec::new();
-
-        match self.next() {
-            None => return Err(ParseMapError::Empty.into()),
-            Some('{') => {}
-            Some(_) => return Err(ParseMapError::Leading.into()),
-        }
-
-        self.skip_ws();
-        if let Some('}') = self.peek() {
-            self.skip();
-            return Ok((map, meta));
-        }
-        let fst_key = self.p_exp(false)?;
-
-        self.skip_ws();
-        if !self.expect(':') {
-            return Err(ParseMapError::Colon.into());
-        }
-        self.skip_ws();
-
-        let fst_val = self.p_exp(false)?;
-        map.push((fst_key, fst_val));
-
-        let mut key;
-        let mut val;
-
-        loop {
-            self.skip_ws();
-            match self.next() {
-                None => return Err(ParseMapError::EndOfInput.into()),
-                Some('}') => {
-                    return Ok((map, meta));
-                },
-                Some(',') => {
-                    self.skip_ws();
-                    key = Some(self.p_exp(false)?);
-
-                    self.skip_ws();
-                    if !self.expect(':') {
-                        return Err(ParseMapError::Colon.into());
-                    }
-                    self.skip_ws();
-
-                    val = Some(self.p_exp(false)?);
-                    map.push((key.take().unwrap(), val.take().unwrap()));
-                }
-                Some(_) => return Err(ParseMapError::CommaOrEnd.into()),
-            }
-        }
-    }
-
-    fn p_if(&mut self, tail: bool) -> Result<(If, Meta), ParseExpressionError> {
-        let meta = self.meta();
-        if self.input.len() == 0 {
-            return Err(ParseIfError::Empty.into());
-        }
-
-        if self.expect_kw("if") {
-            self.skip_ws();
-            let cond = Box::new(self.p_exp(false)?);
-
-            self.skip_ws();
-            if !self.expect_kw("then") {
-                return Err(ParseIfError::Then.into());
-            }
-            self.skip_ws();
-            let then = Box::new(self.p_exp(tail)?);
-            self.skip_ws();
-
-            if self.expect_kw("else") {
-                self.skip_ws();
-                let else_ = Some(Box::new(self.p_exp(tail)?));
-                return Ok((If { cond, then, else_ }, meta));
+            Some('t') => if self.expect_kw("true") {
+                Some((true, meta))
             } else {
-                return Ok((If { cond, then, else_: None }, meta));
-            }
-        } else {
-            return Err(ParseIfError::Leading.into());
-        }
-    }
-
-    fn p_throw(&mut self, tail: bool) -> Result<(Throw, Meta), ParseExpressionError> {
-        let meta = self.meta();
-        if self.input.len() == 0 {
-            return Err(ParseThrowError::Empty.into());
-        }
-
-        if self.expect_kw("throw") {
-            self.skip_ws();
-            return Ok((Throw(Box::new(self.p_exp(tail)?)), meta));
-        } else {
-            return Err(ParseThrowError::Leading.into());
-        }
-    }
-
-    fn p_try(&mut self, tail: bool) -> Result<(Try, Meta), ParseExpressionError> {
-        let meta = self.meta();
-        if self.input.len() == 0 {
-            return Err(ParseTryError::Empty.into());
-        }
-
-        if self.expect_kw("try") {
-            self.skip_ws();
-            let to_try = Box::new(self.p_exp(false)?);
-
-            self.skip_ws();
-            if !self.expect_kw("catch") {
-                return Err(ParseTryError::Catch.into());
+                None
             }
 
-            self.skip_ws();
-            match self.p_id() {
-                Err(err) => return Err(ParseTryError::CaughtId(err).into()),
-                Ok(caught) => {
-                    self.skip_ws();
-                    let catcher = Box::new(self.p_exp(tail)?);
-
-                    return Ok((Try { to_try, caught, catcher }, meta));
-                }
-            }
-        } else {
-            return Err(ParseTryError::Leading.into());
-        }
-    }
-
-    fn p_id(&mut self) -> Result<Id, ParseIdError> {
-        let meta = self.meta();
-        if self.starts_with_a_kw() {
-            return Err(ParseIdError::Kw);
-        }
-
-        let start = self.input;
-
-        match self.next() {
-            None => return Err(ParseIdError::Empty),
-            Some('A'...'Z') | Some('a'...'z') | Some('_') => {},
-            Some(_) => return Err(ParseIdError::Leading),
-        }
-
-        self.skip_while(|c| c.is_ascii_alphanumeric() || c == '_');
-
-        return Ok(Id(start[..start.len() - self.input.len()].to_string(), meta));
-    }
-
-    fn p_let(&mut self, tail: bool) -> Result<(Let, Meta), ParseExpressionError> {
-        let meta = self.meta();
-        if self.input.len() == 0 {
-            return Err(ParseLetError::Empty.into());
-        }
-
-        if self.expect_kw("let") {
-            self.skip_ws();
-            match self.p_id() {
-                Err(err) => return Err(ParseLetError::Lhs(err).into()),
-                Ok(lhs) => {
-                    self.skip_ws();
-                    if !self.expect('=') {
-                        return Err(ParseLetError::EqualsSign.into());
-                    }
-
-                    self.skip_ws();
-                    let rhs = Box::new(self.p_exp(false)?);
-
-                    self.skip_ws();
-                    if !self.expect(';') {
-                        return Err(ParseLetError::Semicolon.into());
-                    }
-
-                    self.skip_ws();
-                    let continuing = Box::new(self.p_exp(tail)?);
-
-                    return Ok((Let { lhs, rhs, continuing }, meta));
-                },
-            }
-        } else {
-            return Err(ParseLetError::Leading.into());
-        }
-    }
-
-    fn p_rec(&mut self, tail: bool) -> Result<(Rec, Meta), ParseExpressionError> {
-        let meta = self.meta();
-        if self.input.len() == 0 {
-            return Err(ParseRecError::Empty.into());
-        }
-
-        if self.expect_kw("rec") {
-            self.skip_ws();
-
-            if let Some('{') = self.peek() {
-                self.skip();
-
-                let mut bindings = Vec::new();
-
-                loop {
-                    self.skip_ws();
-                    if let Some('}') = self.peek() {
-                        self.skip();
-                        self.skip_ws();
-                        let continuing = Box::new(self.p_exp(tail)?);
-                        return Ok((Rec { bindings: bindings, continuing }, meta));
-                    } else {
-                        match self.p_id() {
-                            Err(err) => return Err(ParseRecError::Lhs(err).into()),
-                            Ok(lhs) => {
-                                self.skip_ws();
-                                if !self.expect('=') {
-                                    return Err(ParseRecError::EqualsSign.into());
-                                }
-
-                                self.skip_ws();
-                                let rhs = self.p_fun()?;
-                                bindings.push((lhs, rhs.0));
-                            },
-                        }
-                    }
-                }
+            Some(_) => if self.expect_kw("false") {
+                Some((false, meta))
             } else {
-                match self.p_id() {
-                    Err(err) => return Err(ParseRecError::Lhs(err).into()),
-                    Ok(lhs) => {
-                        self.skip_ws();
-                        if !self.expect('=') {
-                            return Err(ParseRecError::EqualsSign.into());
-                        }
-
-                        self.skip_ws();
-                        let rhs = self.p_fun()?;
-
-                        self.skip_ws();
-                        if !self.expect(';') {
-                            return Err(ParseRecError::Semicolon.into());
-                        }
-
-                        self.skip_ws();
-                        let continuing = Box::new(self.p_exp(tail)?);
-
-                        return Ok((Rec { bindings: vec![(lhs, rhs.0)], continuing }, meta));
-                    },
-                }
+                None
             }
-        } else {
-            return Err(ParseRecError::Leading.into());
         }
-    }
-
-    fn p_fun(&mut self) -> Result<(Fun, Meta), ParseExpressionError> {
-        let meta = self.meta();
-        match self.next() {
-            None => return Err(ParseFunError::Empty.into()),
-            Some('(') => {}
-            Some(_) => return Err(ParseFunError::Leading.into()),
-        }
-
-        self.skip_ws();
-        let args = if let Some(')') = self.peek() {
-            self.skip();
-            Vec::new()
-        } else {
-            let mut args_acc = Vec::new();
-            args_acc.push(self.p_id()?);
-
-            loop {
-                self.skip_ws();
-                match self.next() {
-                    None => return Err(ParseFunError::EndOfInput.into()),
-                    Some(')') => break args_acc,
-                    Some(',') => {
-                        self.skip_ws();
-                        args_acc.push(self.p_id()?);
-                    }
-                    Some(_) => return Err(ParseFunError::CommaOrEnd.into()),
-                }
-            }
-        };
-
-        self.skip_ws();
-        if !self.skip_str("->") {
-            return Err(ParseFunError::Arrow.into());
-        }
-
-        let body = Box::new(self.p_exp(true)?);
-        return Ok((Fun(Arc::new(_Fun { args, body })), meta));
     }
 
     // Non-leftrecursive expressions
-    fn p_lexp(&mut self, tail: bool) -> Result<Expression, ParseExpressionError> {
+    fn p_lexp(&mut self) -> Result<Expression, ParseExpressionError> {
         self.skip_ws();
 
         match self.peek() {
             None => Err(ParseExpressionError::Empty),
-            Some('"') => Ok(self.p_string()?.into()),
-            Some('\'') => Ok(self.p_char()?.into()),
-            Some('0'...'9') => Ok(self.p_int()?.into()),
-            Some('[') => Ok(self.p_seq()?.into()),
-            Some('@') => Ok(self.p_set()?.into()),
-            Some('{') => Ok(self.p_map()?.into()),
-            Some('(') => Ok(self.p_fun()?.into()),
             Some(c) if c.is_ascii_alphabetic() => {
                 if self.starts_with_a_kw() {
                     if self.peek_kw("nil") {
-                        Ok(self.p_nil().unwrap().into())
-                    } else if self.peek_kw("args") {
-                        let meta = self.p_args().unwrap();
-                        Ok(Expression(_Expression::Args, meta))
-                    } else if self.peek_kw("true") {
-                        Ok(self.p_bool().unwrap().into())
-                    } else if self.peek_kw("false") {
-                        Ok(self.p_bool().unwrap().into())
-                    } else if self.peek_kw("if") {
-                        Ok(self.p_if(tail)?.into())
-                    } else if self.peek_kw("let") {
-                        Ok(self.p_let(tail)?.into())
-                    } else if self.peek_kw("rec") {
-                        Ok(self.p_rec(tail)?.into())
-                    } else if self.peek_kw("throw") {
-                        Ok(self.p_throw(tail)?.into())
-                    } else if self.peek_kw("try") {
-                        Ok(self.p_try(tail)?.into())
+                        let meta = self.p_nil().unwrap().1;
+                        Ok(Expression(_Expression::Nil, meta))
+                    } else if self.peek_kw("true") || self.peek_kw("false") {
+                        let (b, meta) = self.p_bool().unwrap();
+                        Ok(Expression(_Expression::Bool(b), meta))
                     } else {
                         Err(ParseExpressionError::NonExpressionKw)
                     }
                 } else {
-                    Ok(self.p_id()?.into())
+                    unimplemented!()
+                    // Ok(self.p_id()?.into())
                 }
             },
             Some(_) => Err(ParseExpressionError::Leading),
         }
     }
 
-    pub fn p_exp(&mut self, tail: bool) -> Result<Expression, ParseExpressionError> {
-        let mut left = self.p_lexp(tail)?;
+    pub fn p_exp(&mut self) -> Result<Expression, ParseExpressionError> {
+        let mut left = self.p_lexp()?;
         self.skip_ws();
 
         match self.peek() {
             None => Ok(left),
-            Some('(') => Ok(self.p_app(left, tail)?.into()),
-            Some('&') => {
-                left.untail();
-                let right = Box::new(self.p_land(tail)?);
-                let meta = left.1.clone();
-                Ok(Expression(_Expression::Land(Box::new(left), right), meta))
-            }
-            Some('|') => {
-                left.untail();
-                let right = Box::new(self.p_lor(tail)?);
-                let meta = left.1.clone();
-                Ok(Expression(_Expression::Lor(Box::new(left), right), meta))
-            }
             Some(_) => Ok(left),
         }
     }
 
-    fn p_land(&mut self, tail: bool) -> Result<Expression, ParseExpressionError> {
-        if !self.skip_str("&&") {
-            return Err(ParseLandError::Op.into());
-        }
-        self.p_exp(tail)
-    }
-
-    fn p_lor(&mut self, tail: bool) -> Result<Expression, ParseExpressionError> {
-        if !self.skip_str("||") {
-            return Err(ParseLorError::Op.into());
-        }
-        self.p_exp(tail)
-    }
-
-    fn p_app(&mut self, mut left: Expression, tail: bool) -> Result<(App, Meta), ParseExpressionError> {
-        left.untail();
-        let meta = left.1.clone();
-        let mut args = Vec::new();
-
-        match self.next() {
-            None => return Err(ParseAppError::Empty.into()),
-            Some('(') => {}
-            Some(_) => return Err(ParseAppError::Leading.into()),
-        }
-
+    fn p_statement(&mut self) -> Result<Statement, ParseStatementError> {
         self.skip_ws();
-        if let Some(')') = self.peek() {
-            self.skip();
-            return Ok((App { fun: Box::new(left), args, tail }, meta));
-        }
 
-        args.push(self.p_exp(false)?);
+        match self.peek() {
+            None => Err(ParseStatementError::Empty),
+            Some(_) => {
+                let exp = self.p_exp()?;
+                let meta = exp.1.clone();
+                Ok(Statement(_Statement::Exp(exp), meta))
+            },
+        }
+    }
+
+    // just semicolon-separated statements, no braces (use p_block for those)
+    pub fn p_program(&mut self) -> Result<Box<[Statement]>, ParseStatementError> {
+        let mut stmts = Vec::new();
 
         loop {
+            stmts.push(self.p_statement()?);
             self.skip_ws();
-            match self.next() {
-                None => return Err(ParseAppError::EndOfInput.into()),
-                Some(')') => return Ok((App { fun: Box::new(left), args, tail }, meta)),
-                Some(',') => {
-                    self.skip_ws();
-                    args.push(self.p_exp(false)?);
-                }
-                Some(_) => return Err(ParseAppError::CommaOrEnd.into()),
+            match self.peek() {
+                Some(';') => self.skip(),
+                _ => return Ok(stmts.into_boxed_slice()),
             }
         }
     }
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseIntError {
-    #[fail(display = "expected integer literal, got end of input")]
-    Empty,
-    #[fail(display = "expected integer literal, got invalid first digit")]
-    Leading,
-    #[fail(display = "hex integer literal must contain at least one digit")]
-    EmptyHex,
-    #[fail(display = "hex integer literal has invalid first digit")]
-    LeadingHex,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseCharError {
-    #[fail(display = "expected char literal, got end of input")]
-    Empty,
-    #[fail(display = "expected char literal, got non-quote first character")]
-    Leading,
-    #[fail(display = "reached end of input while parsing a char literal")]
-    EndOfInput,
-    #[fail(display = "char literal can only contain a single character")]
-    TooLong,
-    #[fail(display = "invalid character following the escape `\\` in a char literal")]
-    Escape,
-    #[fail(display = "unicode escape must begin with `{{`")]
-    UnicodeLBrace,
-    #[fail(display = "unicode escape must consist of hex digits")]
-    UnicodeDigit,
-    #[fail(display = "unicode escape may consist of at most six hex digits")]
-    UnicodeTooLong,
-    #[fail(display = "unicode escape must encode a valid scalar value")]
-    UnicodeScalar,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseStringError {
-    #[fail(display = "expected string literal, got end of input")]
-    Empty,
-    #[fail(display = "expected string literal, got non-quote first character")]
-    Leading,
-    #[fail(display = "reached end of input while parsing a string literal")]
-    EndOfInput,
-    #[fail(display = "invalid character following the escape `\\` in a string literal")]
-    Escape,
-    #[fail(display = "unicode escape must begin with `{{`")]
-    UnicodeLBrace,
-    #[fail(display = "unicode escape must consist of hex digits")]
-    UnicodeDigit,
-    #[fail(display = "unicode escape may consist of at most six hex digits")]
-    UnicodeTooLong,
-    #[fail(display = "unicode escape must encode a valid scalar value")]
-    UnicodeScalar,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseSeqError {
-    #[fail(display = "expected sequence literal, got end of input")]
-    Empty,
-    #[fail(display = "expected sequence literal, got non-bracket character")]
-    Leading,
-    #[fail(display = "reached end of input while parsing a sequence literal")]
-    EndOfInput,
-    #[fail(display = "expected a comma to continue a sequence, or a bracket to terminate it")]
-    CommaOrEnd,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseSetError {
-    #[fail(display = "expected set literal, got end of input")]
-    Empty,
-    #[fail(display = "expected set literal, got non-brace character")]
-    Leading,
-    #[fail(display = "reached end of input while parsing a set literal")]
-    EndOfInput,
-    #[fail(display = "expected a comma to continue a set, or a closing brace to terminate it")]
-    CommaOrEnd,
-    #[fail(display = "second character of a set literal must be an opening brace")]
-    OpeningBrace,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseMapError {
-    #[fail(display = "expected map literal, got end of input")]
-    Empty,
-    #[fail(display = "expected map literal, got non-brace character")]
-    Leading,
-    #[fail(display = "reached end of input while parsing a map literal")]
-    EndOfInput,
-    #[fail(display = "expected a colon to delimit key and value")]
-    Colon,
-    #[fail(display = "expected a comma to continue a map, or a closing brace to terminate it")]
-    CommaOrEnd,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseIfError {
-    #[fail(display = "expected if expression, got end of input")]
-    Empty,
-    #[fail(display = "expected if expression, did not get the `if` keyword")]
-    Leading,
-    #[fail(display = "expected `then` keyword")]
-    Then,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseThrowError {
-    #[fail(display = "expected throw expression, got end of input")]
-    Empty,
-    #[fail(display = "expected throw expression, did not get the `throw` keyword")]
-    Leading,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseTryError {
-    #[fail(display = "expected try expression, got end of input")]
-    Empty,
-    #[fail(display = "expected try expression, did not get the `try` keyword")]
-    Leading,
-    #[fail(display = "expected `catch` keyword")]
-    Catch,
-    #[fail(display = "invalid id for the caught exception")]
-    CaughtId(#[fail(cause)]ParseIdError),
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseIdError {
-    #[fail(display = "expected identifier, got end of input")]
-    Empty,
-    #[fail(display = "expected identifier, got neither an ascii alphanumeric character nor an underscore")]
-    Leading,
-    #[fail(display = "expected identifier, got a keyword")]
-    Kw
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseLetError {
-    #[fail(display = "expected let expression, got end of input")]
-    Empty,
-    #[fail(display = "expected let expression, did not get the `let` keyword")]
-    Leading,
-    #[fail(display = "invalid left-hand side of let expression")]
-    Lhs(#[fail(cause)]ParseIdError),
-    #[fail(display = "let expression requires `=` after the left-hand side")]
-    EqualsSign,
-    #[fail(display = "let expression requires `;` after the binding")]
-    Semicolon,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseRecError {
-    #[fail(display = "expected rec expression, got end of input")]
-    Empty,
-    #[fail(display = "expected rec expression, did not get the `rec` keyword")]
-    Leading,
-    #[fail(display = "invalid left-hand side of rec expression")]
-    Lhs(#[fail(cause)]ParseIdError),
-    #[fail(display = "rec expression requires `=` after the left-hand side")]
-    EqualsSign,
-    #[fail(display = "rec expression requires `;` after the binding")]
-    Semicolon,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseFunError {
-    #[fail(display = "expected function literal, got end of input")]
-    Empty,
-    #[fail(display = "expected function literal, did not get an opening paren")]
-    Leading,
-    #[fail(display = "reached end of input while parsing a function argument list")]
-    EndOfInput,
-    #[fail(display = "expected a comma to continue a function argument list, or a closing paren to terminate it")]
-    CommaOrEnd,
-    #[fail(display = "argument list must be followed by `->`")]
-    Arrow,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseAppError {
-    #[fail(display = "expected function application, got end of input")]
-    Empty,
-    #[fail(display = "expected function application, did not get an opening paren")]
-    Leading,
-    #[fail(display = "reached end of input while parsing the arguments of a function application")]
-    EndOfInput,
-    #[fail(display = "expected a comma to continue the list of arguments of a function application, or a closing paren to terminate it")]
-    CommaOrEnd,
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseLandError {
-    #[fail(display = "expected 'and' operator, did not get `&&`")]
-    Op
-}
-
-#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseLorError {
-    #[fail(display = "expected 'or' operator, did not get `||`")]
-    Op
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
@@ -1034,132 +248,18 @@ pub enum ParseExpressionError {
     Trailing,
     #[fail(display = "expected expression, got a keyword that does not start an expression")]
     NonExpressionKw,
-    #[fail(display = "erroneous char literal")]
-    Char(#[fail(cause)]ParseCharError),
-    #[fail(display = "erroneous string literal")]
-    String(#[fail(cause)]ParseStringError),
-    #[fail(display = "erroneous number literal")]
-    Num(#[fail(cause)]ParseIntError),
-    #[fail(display = "erroneous sequence literal")]
-    Seq(#[fail(cause)]ParseSeqError),
-    #[fail(display = "erroneous set literal")]
-    Set(#[fail(cause)]ParseSetError),
-    #[fail(display = "erroneous map literal")]
-    Map(#[fail(cause)]ParseMapError),
-    #[fail(display = "erroneous if expression")]
-    If(#[fail(cause)]ParseIfError),
-    #[fail(display = "erroneous throw expression")]
-    Throw(#[fail(cause)]ParseThrowError),
-    #[fail(display = "erroneous try expression")]
-    Try(#[fail(cause)]ParseTryError),
-    #[fail(display = "erroneous identifier")]
-    Id(#[fail(cause)]ParseIdError),
-    #[fail(display = "erroneous let expression")]
-    Let(#[fail(cause)]ParseLetError),
-    #[fail(display = "erroneous rec expression")]
-    Rec(#[fail(cause)]ParseRecError),
-    #[fail(display = "erroneous function literal")]
-    Fun(#[fail(cause)]ParseFunError),
-    #[fail(display = "erroneous function application")]
-    App(#[fail(cause)]ParseAppError),
-    #[fail(display = "erroneous 'and' operator")]
-    Land(#[fail(cause)]ParseLandError),
-    #[fail(display = "erroneous 'or' operator")]
-    Lor(#[fail(cause)]ParseLorError),
 }
 
-impl From<ParseCharError> for ParseExpressionError {
-    fn from(err: ParseCharError) -> ParseExpressionError {
-        ParseExpressionError::Char(err)
-    }
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseStatementError {
+    #[fail(display = "expected statement, got end of input")]
+    Empty,
+    #[fail(display = "erroneous expression in statement")]
+    Exp(#[fail(cause)]ParseExpressionError),
 }
 
-impl From<ParseStringError> for ParseExpressionError {
-    fn from(err: ParseStringError) -> ParseExpressionError {
-        ParseExpressionError::String(err)
-    }
-}
-
-impl From<ParseIntError> for ParseExpressionError {
-    fn from(err: ParseIntError) -> ParseExpressionError {
-        ParseExpressionError::Num(err)
-    }
-}
-
-impl From<ParseSeqError> for ParseExpressionError {
-    fn from(err: ParseSeqError) -> ParseExpressionError {
-        ParseExpressionError::Seq(err)
-    }
-}
-
-impl From<ParseSetError> for ParseExpressionError {
-    fn from(err: ParseSetError) -> ParseExpressionError {
-        ParseExpressionError::Set(err)
-    }
-}
-
-impl From<ParseMapError> for ParseExpressionError {
-    fn from(err: ParseMapError) -> ParseExpressionError {
-        ParseExpressionError::Map(err)
-    }
-}
-
-impl From<ParseIfError> for ParseExpressionError {
-    fn from(err: ParseIfError) -> ParseExpressionError {
-        ParseExpressionError::If(err)
-    }
-}
-
-impl From<ParseThrowError> for ParseExpressionError {
-    fn from(err: ParseThrowError) -> ParseExpressionError {
-        ParseExpressionError::Throw(err)
-    }
-}
-
-impl From<ParseTryError> for ParseExpressionError {
-    fn from(err: ParseTryError) -> ParseExpressionError {
-        ParseExpressionError::Try(err)
-    }
-}
-
-impl From<ParseIdError> for ParseExpressionError {
-    fn from(err: ParseIdError) -> ParseExpressionError {
-        ParseExpressionError::Id(err)
-    }
-}
-
-impl From<ParseLetError> for ParseExpressionError {
-    fn from(err: ParseLetError) -> ParseExpressionError {
-        ParseExpressionError::Let(err)
-    }
-}
-
-impl From<ParseRecError> for ParseExpressionError {
-    fn from(err: ParseRecError) -> ParseExpressionError {
-        ParseExpressionError::Rec(err)
-    }
-}
-
-impl From<ParseFunError> for ParseExpressionError {
-    fn from(err: ParseFunError) -> ParseExpressionError {
-        ParseExpressionError::Fun(err)
-    }
-}
-
-impl From<ParseAppError> for ParseExpressionError {
-    fn from(err: ParseAppError) -> ParseExpressionError {
-        ParseExpressionError::App(err)
-    }
-}
-
-impl From<ParseLandError> for ParseExpressionError {
-    fn from(err: ParseLandError) -> ParseExpressionError {
-        ParseExpressionError::Land(err)
-    }
-}
-
-impl From<ParseLorError> for ParseExpressionError {
-    fn from(err: ParseLorError) -> ParseExpressionError {
-        ParseExpressionError::Lor(err)
+impl From<ParseExpressionError> for ParseStatementError {
+    fn from(err: ParseExpressionError) -> ParseStatementError {
+        ParseStatementError::Exp(err)
     }
 }
