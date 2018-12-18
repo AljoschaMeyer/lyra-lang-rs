@@ -1,7 +1,4 @@
-use std::cell::RefCell;
-use std::collections::HashSet;
 use std::convert::TryFrom;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use num::{BigInt, BigRational, Num};
@@ -136,20 +133,26 @@ impl<'a> Parser<'a> {
 
     // Checks whether the input starts with a (well-known) keyword.
     fn starts_with_a_kw(&mut self) -> bool {
-        if self.input.starts_with("if") {
-            return self.input.len() == 2 || !is_ident_byte(self.input.as_bytes()[2]);
-        } else if self.input.starts_with("nil") ||
-            self.input.starts_with("let") ||
-            self.input.starts_with("rec") ||
-            self.input.starts_with("try") {
+        // TODO update as keywords are added
+        // if self.input.starts_with("if") {
+        //     return self.input.len() == 2 || !is_ident_byte(self.input.as_bytes()[2]);
+        // } else
+        if self.input.starts_with("nil")
+        // ||
+        //     self.input.starts_with("let") ||
+        //     self.input.starts_with("rec") ||
+        //     self.input.starts_with("try")
+            {
             return self.input.len() == 3 || !is_ident_byte(self.input.as_bytes()[3]);
-        } else if self.input.starts_with("true") || self.input.starts_with("args") {
-            return self.input.len() == 4 || !is_ident_byte(self.input.as_bytes()[4]);
-        } else if self.input.starts_with("false") ||
-            self.input.starts_with("throw") ||
-            self.input.starts_with("trace") {
-            return self.input.len() == 5 || !is_ident_byte(self.input.as_bytes()[5]);
-        } else {
+        }
+        // else if self.input.starts_with("true") || self.input.starts_with("args") {
+        //     return self.input.len() == 4 || !is_ident_byte(self.input.as_bytes()[4]);
+        // } else if self.input.starts_with("false") ||
+        //     self.input.starts_with("throw") ||
+        //     self.input.starts_with("trace") {
+        //     return self.input.len() == 5 || !is_ident_byte(self.input.as_bytes()[5]);
+        // }
+        else {
             false
         }
     }
@@ -169,33 +172,24 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn p_args(&mut self) -> Option<Meta> {
-        let meta = self.meta();
-        if self.expect_kw("args") {
-            Some(meta)
-        } else {
-            None
-        }
-    }
-
-    fn p_bool(&mut self) -> Option<(bool, Meta)> {
-        let meta = self.meta();
-        match self.peek() {
-            None => None,
-
-            Some('t') => if self.expect_kw("true") {
-                Some((true, meta))
-            } else {
-                None
-            }
-
-            Some(_) => if self.expect_kw("false") {
-                Some((false, meta))
-            } else {
-                None
-            }
-        }
-    }
+    // fn p_bool(&mut self) -> Option<(bool, Meta)> {
+    //     let meta = self.meta();
+    //     match self.peek() {
+    //         None => None,
+    //
+    //         Some('t') => if self.expect_kw("true") {
+    //             Some((true, meta))
+    //         } else {
+    //             None
+    //         }
+    //
+    //         Some(_) => if self.expect_kw("false") {
+    //             Some((false, meta))
+    //         } else {
+    //             None
+    //         }
+    //     }
+    // }
 
     fn p_int(&mut self) -> Result<(BigRational, Meta), ParseIntError> {
         let meta = self.meta();
@@ -1169,32 +1163,3 @@ impl From<ParseLorError> for ParseExpressionError {
         ParseExpressionError::Lor(err)
     }
 }
-
-// struct Scope(Rc<(RefCell<HashSet<String>>, Option<Scope>)>);
-//
-// impl Scope {
-//     fn top_level() -> Scope {
-//         let builtins = vec!["to_string", "typeof", "and", "or"];
-//         let set = builtins.iter().map(|s| s.to_string()).collect();
-//         Scope(Rc::new((RefCell::new(set), None)))
-//     }
-//
-//     fn child(&self) -> Scope {
-//         Scope(Rc::new((RefCell::new(HashSet::new()), Some(Scope(self.0.clone())))))
-//     }
-//
-//     fn insert(&mut self, id: &str) {
-//         (self.0).0.borrow_mut().insert(id.to_string());
-//     }
-//
-//     fn is_free(&self, id: &str) -> bool {
-//         if (self.0).0.borrow().contains(id) {
-//             return false;
-//         } else {
-//             match (self.0).1 {
-//                 None => return true,
-//                 Some(ref parent) => return parent.is_free(id),
-//             }
-//         }
-//     }
-// }
