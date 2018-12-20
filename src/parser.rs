@@ -92,7 +92,8 @@ impl<'a> Parser<'a> {
         self.input.chars().next()
     }
 
-    fn skip_ws(&mut self) {
+    /// Consume as much whitespace (including comments) as possible.
+    pub fn skip_ws(&mut self) {
         loop {
             match self.peek() {
                 Some('#') => {
@@ -129,7 +130,9 @@ impl<'a> Parser<'a> {
     // Checks whether the input starts with a (well-known) keyword.
     fn starts_with_a_kw(&mut self) -> bool {
         // TODO update as keywords are added
-        if self.input.starts_with("nil") {
+        if self.input.starts_with("nil")
+        || self.input.starts_with("mut")
+        || self.input.starts_with("let") {
             return self.input.len() == 3 || !is_ident_byte(self.input.as_bytes()[3]);
         } else if self.input.starts_with("true") {
             return self.input.len() == 4 || !is_ident_byte(self.input.as_bytes()[4]);
@@ -201,11 +204,9 @@ impl<'a> Parser<'a> {
 
     // Non-leftrecursive expressions
     fn p_lexp(&mut self) -> Result<Expression, ParseExpressionError> {
-        self.skip_ws();
-
         match self.peek() {
             None => Err(ParseExpressionError::Empty),
-            Some(c) if c.is_ascii_alphabetic() => {
+            Some(c) if c.is_ascii_alphabetic() || c == '_' => {
                 if self.starts_with_a_kw() {
                     if self.peek_kw("nil") {
                         let meta = self.p_nil().unwrap().1;
@@ -234,16 +235,86 @@ impl<'a> Parser<'a> {
             Some(_) => Ok(left),
         }
     }
+    
+    pub fn p_pattern(&mut self) -> Result<Pattern, ParsePatternError> {
+        match self.peek() {
+            None => Err(ParsePatternError::Empty),
+            Some('_') => {
+                match self.input.as_bytes().get(1) {
+                    Some(b) if is_ident_byte(*b) => {
+                        let (id, meta) = self.p_id().unwrap();
+                        Ok(Pattern(_Pattern::Id { id, mutable: false }, meta))
+                    }
+                    _ => {
+                        let meta = self.meta();
+                        self.skip();
+                        Ok(Pattern(_Pattern::Blank, meta))
+                    }
+                } 
+            }
+            Some(c) if c.is_ascii_alphabetic() => {
+                if self.starts_with_a_kw() {
+                    if self.peek_kw("nil") {
+                        let meta = self.p_nil().unwrap().1;
+                        Ok(Pattern(_Pattern::Nil, meta))
+                    } else if self.peek_kw("true") || self.peek_kw("false") {
+                        let (b, meta) = self.p_bool().unwrap();
+                        Ok(Pattern(_Pattern::Bool(b), meta))
+                    } else if self.peek_kw("mut") {
+                        self.skip_str("mut");
+                        self.skip_ws();
+                        let (id, meta) = self.p_id()?; // meta points to the identifier, not the mut keyword
+                        Ok(Pattern(_Pattern::Id { id, mutable: false }, meta))
+                    } else {
+                        Err(ParsePatternError::NonPatternKw)
+                    }
+                } else {
+                    let (id, meta) = self.p_id()?;
+                    Ok(Pattern(_Pattern::Id { id, mutable: false }, meta))
+                }
+            },
+            Some(_) => Err(ParsePatternError::Leading),
+        }
+    }
+    
+    fn p_let(&mut self) -> Result<Statement, ParseStatementError> {
+        let meta = self.meta();
+        if self.input.len() == 0 {
+            return Err(ParseLetError::Empty.into());
+        }
+
+        if self.expect_kw("let") {
+            self.skip_ws();
+            match self.p_pattern() {
+                Err(err) => return Err(ParseLetError::Pattern(err).into()),
+                Ok(lhs) => {
+                    self.skip_ws();
+                    if !self.expect('=') {
+                        return Err(ParseLetError::EqualsSign.into());
+                    }
+
+                    self.skip_ws();
+                    let rhs = self.p_exp()?;
+                    
+                    return Ok(Statement(_Statement::Let(lhs, rhs), meta));
+                },
+            }
+        } else {
+            return Err(ParseLetError::Leading.into());
+        }
+}
 
     fn p_statement(&mut self) -> Result<Statement, ParseStatementError> {
-        self.skip_ws();
-
         match self.peek() {
             None => Err(ParseStatementError::Empty),
             Some(_) => {
-                let exp = self.p_exp()?;
-                let meta = exp.1.clone();
-                Ok(Statement(_Statement::Exp(exp), meta))
+                if self.peek_kw("let") {
+                    self.p_let()
+                } else {
+                    let exp = self.p_exp()?;
+                    let meta = exp.1.clone();
+                    Ok(Statement(_Statement::Exp(exp), meta))
+                }
             },
         }
     }
@@ -253,6 +324,7 @@ impl<'a> Parser<'a> {
         let mut stmts = Vec::new();
 
         loop {
+            self.skip_ws();
             stmts.push(self.p_statement()?);
             self.skip_ws();
             match self.peek() {
@@ -262,7 +334,6 @@ impl<'a> Parser<'a> {
         }
     }
 }
-
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
 pub enum ParseIdError {
@@ -282,8 +353,6 @@ pub enum ParseExpressionError {
     Empty,
     #[fail(display = "expected expression, got invalid first character")]
     Leading,
-    #[fail(display = "got trailing non-whitespace character after an expression")]
-    Trailing,
     #[fail(display = "expected expression, got a keyword that does not start an expression")]
     NonExpressionKw,
     #[fail(display = "erroneous identifier")]
@@ -297,11 +366,51 @@ impl From<ParseIdError> for ParseExpressionError {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParsePatternError {
+    #[fail(display = "expected pattern, got end of input")]
+    Empty,
+    #[fail(display = "expected pattern, got invalid first character")]
+    Leading,
+    #[fail(display = "expected pattern, got a keyword that does not start a pattern")]
+    NonPatternKw,
+    #[fail(display = "erroneous identifier")]
+    Id(#[fail(cause)]ParseIdError),
+}
+
+impl From<ParseIdError> for ParsePatternError {
+    fn from(err: ParseIdError) -> ParsePatternError {
+        ParsePatternError::Id(err)
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseLetError {
+    #[fail(display = "expected let statement, got end of input")]
+    Empty,
+    #[fail(display = "expected let statement, did not get the `let` keyword")]
+    Leading,
+    #[fail(display = "invalid left-hand side of let statement")]
+    Pattern(#[fail(cause)]ParsePatternError),
+    #[fail(display = "let expression requires `=` after the left-hand side")]
+    EqualsSign,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
 pub enum ParseStatementError {
     #[fail(display = "expected statement, got end of input")]
     Empty,
+    #[fail(display = "expected statement, got a keyword that does not start a statement")]
+    NonStatementKw,
+    #[fail(display = "erroneous let statement")]
+    Let(#[fail(cause)]ParseLetError),
     #[fail(display = "erroneous expression in statement")]
     Exp(#[fail(cause)]ParseExpressionError),
+}
+
+impl From<ParseLetError> for ParseStatementError {
+    fn from(err: ParseLetError) -> ParseStatementError {
+        ParseStatementError::Let(err)
+    }
 }
 
 impl From<ParseExpressionError> for ParseStatementError {

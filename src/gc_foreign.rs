@@ -43,4 +43,9 @@ impl<K: Ord + Clone, V: Clone> OrdMap<K, V> {
     {
         self.0.get(key)
     }
+    
+    #[must_use]
+    pub fn update(&self, key: K, value: V) -> Self {
+        OrdMap(self.0.update(key, value))
+    }
 }

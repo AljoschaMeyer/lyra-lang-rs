@@ -60,6 +60,7 @@ pub struct Statement(pub _Statement, pub Meta);
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub enum _Statement {
     Exp(Expression),
+    Let(Pattern, Expression)
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -68,6 +69,10 @@ pub struct Pattern(pub _Pattern, pub Meta);
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub enum _Pattern {
     Blank,
-    Id(String),
+    Id {
+        id: String,
+        mutable: bool,
+    },
+    Nil,
     Bool(bool),
 }
