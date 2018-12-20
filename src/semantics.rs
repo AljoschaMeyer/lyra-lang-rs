@@ -1,7 +1,7 @@
 use gc::{Gc, GcCell};
 
 use super::gc_foreign::OrdMap;
-use super::syntax::{Expression, _Expression, Statement, _Statement, Pattern, _Pattern};
+use super::syntax::{Meta, Expression, _Expression, Statement, _Statement, Pattern, _Pattern};
 
 /// Runtime representation of an arbitrary lyra value.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Trace, Finalize)]
@@ -56,7 +56,7 @@ impl Environment {
 /// environment (and modifying it in case of assignments nested in the expression).
 ///
 /// `Err` if the evaluation throws, `Ok` otherwise.
-pub fn evaluate(exp: &Expression, env: &Environment) -> Result<Value, Value> {
+pub fn evaluate(exp: &Expression, env: &Environment) -> Result<Value, (Value, Meta)> {
     // TODO trampoline tail-calls
     let _ = env;
 
@@ -71,7 +71,7 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Result<Value, Value> {
 /// environment in case of (nested) assignments), as well as the resulting value.
 ///
 /// `Err` if the execution throws, `Ok` otherwise.
-pub fn exec(stmt: &Statement, env: Environment) -> (Environment, Result<Value, Value>) {
+pub fn exec(stmt: &Statement, env: Environment) -> (Environment, Result<Value, (Value, Meta)>) {
     match stmt.0 {
         _Statement::Exp(ref exp) => {
             let eval = evaluate(exp, &env);
@@ -84,7 +84,7 @@ pub fn exec(stmt: &Statement, env: Environment) -> (Environment, Result<Value, V
 /// upon throws.
 ///
 /// For zero statements, this returns the environment unchanged and Ok(Value::Nil).
-pub fn exec_many<'i, I>(stmts: &'i mut I, mut env: Environment) -> (Environment, Result<Value, Value>)
+pub fn exec_many<'i, I>(stmts: &'i mut I, mut env: Environment) -> (Environment, Result<Value, (Value, Meta)>)
     where I: Iterator<Item = &'i Statement> {
         let mut eval = Ok(Value::Nil);
 
