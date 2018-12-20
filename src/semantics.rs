@@ -104,18 +104,13 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Result<Value, (Value, Re
 /// environment in case of (nested) assignments), as well as the resulting value.
 ///
 /// `Err` if the execution throws, `Ok` otherwise.
-pub fn exec(stmt: &Statement, env: Environment) -> (Environment, Result<Value, (Value, Reason)>) {
-    // TODO can this return Result<(Value, Environment), (Value, Reason)>?
+pub fn exec(stmt: &Statement, env: Environment) -> Result<(Value, Environment), (Value, Reason)> {
     match stmt.0 {
         _Statement::Exp(ref exp) => {
-            let eval = evaluate(exp, &env);
-            return (env, eval);
+            evaluate(exp, &env).map(|val| (val, env))
         }
         _Statement::Let(ref lhs, ref rhs) => {
-            match evaluate(rhs, &env) {
-                Ok(rhs_val) => destructure(lhs, &rhs_val, env),
-                Err(thrown) => (env, Err(thrown)),
-            }
+            evaluate(rhs, &env).and_then(|val| destructure(lhs, &val, env))
         }
     }
 }
@@ -124,52 +119,52 @@ pub fn exec(stmt: &Statement, env: Environment) -> (Environment, Result<Value, (
 /// upon throws.
 ///
 /// For zero statements, this returns the environment unchanged and Ok(Value::Nil).
-pub fn exec_many<'i, I>(stmts: &'i mut I, mut env: Environment) -> (Environment, Result<Value, (Value, Reason)>)
+pub fn exec_many<'i, I>(stmts: &'i mut I, mut env: Environment) -> Result<(Value, Environment), (Value, Reason)>
     where I: Iterator<Item = &'i Statement> {
-        let mut eval = Ok(Value::Nil);
+        let mut val = Value::Nil;
 
         for stmt in stmts {
-            let (new_env, new_eval) = exec(stmt, env);
-            env = new_env;
-            eval = new_eval;
-
-            if eval.is_err() {
-                return (env, eval);
+            match exec(stmt, env) {
+                Ok((new_val, new_env)) => {
+                    val = new_val;
+                    env = new_env;
+                }
+                Err(err) => return Err(err),
             }
         }
 
-        return (env, eval);
+        return Ok((val, env));
 }
 
 /// Returns a new environment, adding bindings by destructuring the value according to the pattern.
 ///
 /// `Err` if the pattern is refuted, `Ok(Value::Nil)` otherwise.
-pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) -> (Environment, Result<Value, (Value, Reason)>) {
+pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) -> Result<(Value, Environment), (Value, Reason)> {
     match pat {
-        _Pattern::Blank => (env, Ok(Value::Nil)),
+        _Pattern::Blank => Ok((Value::Nil, env)),
         
         _Pattern::Nil => {
             match val {
-                Value::Nil => (env, Ok(Value::Nil)),
-                _ => (env, Err((builtins::ERR_REFUTED_NIL.clone(), Reason(_Reason::Refuted {
+                Value::Nil => Ok((Value::Nil, env)),
+                _ => Err((builtins::ERR_REFUTED_NIL.clone(), Reason(_Reason::Refuted {
                     expected: RefutationKind::Nil,
                     actual: val.clone(),
-                }, meta.clone()))))
+                }, meta.clone())))
             }
         }
         
         _Pattern::Bool(b) => {
             match val {
-                Value::Bool(b2) if b == b2 => (env, Ok(Value::Nil)),
-                _ => (env, Err((builtins::ERR_REFUTED_BOOL.clone(), Reason(_Reason::Refuted {
+                Value::Bool(b2) if b == b2 => Ok((Value::Nil, env)),
+                _ => Err((builtins::ERR_REFUTED_BOOL.clone(), Reason(_Reason::Refuted {
                     expected: RefutationKind::Bool(*b),
                     actual: val.clone(),
-                }, meta.clone()))))
+                }, meta.clone())))
             }
         }
         
         _Pattern::Id { id, mutable } => {
-            (env.insert(id.to_string(), val.clone(), *mutable), Ok(Value::Nil))
+            Ok((Value::Nil, env.insert(id.to_string(), val.clone(), *mutable)))
         }
     }
 }
