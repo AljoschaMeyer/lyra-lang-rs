@@ -9,6 +9,7 @@ extern crate im_rc;
 extern crate num;
 extern crate ropey;
 
+pub mod gc_foreign;
 pub mod syntax;
 pub mod parser;
 pub mod semantics;
@@ -17,12 +18,12 @@ pub mod semantics;
 mod tests {
     use super::parser::Parser;
     use super::syntax::Source;
-    use super::semantics::{Value, exec_many, initial_env};
+    use super::semantics::{Value, exec_many, Environment};
 
     fn run(src: &str) -> Result<Value, Value> {
         let mut p = Parser::new(src, Source::other());
         let program = p.p_program().unwrap();
-        let eval = exec_many(&mut program.iter(), initial_env());
+        let eval = exec_many(&mut program.iter(), Environment::toplevel());
         assert!(p.end());
         eval.1
     }

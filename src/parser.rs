@@ -146,6 +146,31 @@ fn is_ident_byte(b: u8) -> bool {
 }
 
 impl<'a> Parser<'a> {
+    fn p_id(&mut self) -> Result<(String, Meta), ParseIdError> {
+        let meta = self.meta();
+        if self.starts_with_a_kw() {
+            return Err(ParseIdError::Kw);
+        }
+
+        let start = self.input;
+
+        match self.next() {
+            None => return Err(ParseIdError::Empty),
+            Some('A'...'Z') | Some('a'...'z') | Some('_') => {},
+            Some(_) => return Err(ParseIdError::Leading),
+        }
+
+        self.skip_while(|c| c.is_ascii_alphanumeric() || c == '_');
+        
+        let id = start[..start.len() - self.input.len()].to_string();
+        
+        if id == "_" {
+            return Err(ParseIdError::Blank);
+        } else {
+            return Ok((id, meta));
+        }
+    }
+
     fn p_nil(&mut self) -> Option<((), Meta)> {
         let meta = self.meta();
         if self.expect_kw("nil") {
@@ -192,8 +217,8 @@ impl<'a> Parser<'a> {
                         Err(ParseExpressionError::NonExpressionKw)
                     }
                 } else {
-                    unimplemented!()
-                    // Ok(self.p_id()?.into())
+                    let (id, meta) = self.p_id()?;
+                    Ok(Expression(_Expression::Id(id), meta))
                 }
             },
             Some(_) => Err(ParseExpressionError::Leading),
@@ -238,6 +263,19 @@ impl<'a> Parser<'a> {
     }
 }
 
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseIdError {
+    #[fail(display = "expected identifier, got end of input")]
+    Empty,
+    #[fail(display = "expected identifier, got neither an ascii alphanumeric character nor an underscore")]
+    Leading,
+    #[fail(display = "expected identifier, got a keyword")]
+    Kw,
+    #[fail(display = "expected identifier, got a lonely underscore")]
+    Blank,
+}
+
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
 pub enum ParseExpressionError {
     #[fail(display = "expected expression, got end of input")]
@@ -248,6 +286,14 @@ pub enum ParseExpressionError {
     Trailing,
     #[fail(display = "expected expression, got a keyword that does not start an expression")]
     NonExpressionKw,
+    #[fail(display = "erroneous identifier")]
+    Id(#[fail(cause)]ParseIdError),
+}
+
+impl From<ParseIdError> for ParseExpressionError {
+    fn from(err: ParseIdError) -> ParseExpressionError {
+        ParseExpressionError::Id(err)
+    }
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
