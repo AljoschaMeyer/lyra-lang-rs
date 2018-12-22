@@ -52,6 +52,8 @@ pub enum _Expression {
     Id(String),
     Nil,
     Bool(bool),
+    Land(Box<Expression>, Box<Expression>),
+    Lor(Box<Expression>, Box<Expression>),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]

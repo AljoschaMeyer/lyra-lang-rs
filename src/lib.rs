@@ -68,4 +68,26 @@ mod tests {
         assert_syntax_err("let x = true; x = false");
         assert_syntax_err("let mut x = true; let x = true; x = false");
     }
+    
+    #[test]
+    fn test_land() {
+        assert_eq!(run("true && true").unwrap().0, Value::Bool(true));
+        assert_eq!(run("true && false").unwrap().0, Value::Bool(false));
+        assert_eq!(run("false && true").unwrap().0, Value::Bool(false));
+        assert_eq!(run("false && false").unwrap().0, Value::Bool(false));
+        
+        // TODO uncomment when applications are implemented
+        // assert_eq!(run("false && halt()").unwrap().0, Value::Bool(false));
+    }
+    
+    #[test]
+    fn test_lor() {
+        assert_eq!(run("true || true").unwrap().0, Value::Bool(true));
+        assert_eq!(run("true || false").unwrap().0, Value::Bool(true));
+        assert_eq!(run("false || true").unwrap().0, Value::Bool(true));
+        assert_eq!(run("false || false").unwrap().0, Value::Bool(false));
+        
+        // TODO uncomment when applications are implemented
+        // assert_eq!(run("true && halt()").unwrap().0, Value::Bool(true));
+    }
 }

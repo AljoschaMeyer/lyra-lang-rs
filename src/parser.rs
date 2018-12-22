@@ -222,12 +222,20 @@ impl<'a> Parser<'a> {
     }
 
     pub fn p_exp(&mut self) -> Result<Expression, ParseExpressionError> {
-        let mut left = self.p_lexp()?;
+        let left = self.p_lexp()?;
+        let meta = left.1.clone();
         self.skip_ws();
-
-        match self.peek() {
-            None => Ok(left),
-            Some(_) => Ok(left),
+        
+        if self.skip_str("&&") {
+            self.skip_ws();
+            let rhs = Box::new(self.p_exp()?);
+            Ok(Expression(_Expression::Land(Box::new(left), rhs), meta))
+        } else if self.skip_str("||") {
+            self.skip_ws();
+            let rhs = Box::new(self.p_exp()?);
+            Ok(Expression(_Expression::Lor(Box::new(left), rhs), meta))
+        } else {
+            Ok(left)
         }
     }
     

@@ -96,6 +96,13 @@ impl Environment {
     }
 }
 
+fn truthy(val: &Value) -> bool {
+    match val {
+        Value::Nil | Value::Bool(false) => false,
+        _ => true,
+    }
+}
+
 /// Turns an expression (syntax) into a value (semantics), looking up bindings in the given
 /// environment (and modifying it in case of assignments nested in the expression).
 ///
@@ -108,6 +115,20 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Result<Value, (Value, Re
         _Expression::Id(ref id) => Ok(env.lookup(id)),
         _Expression::Nil => Ok(Value::Nil),
         _Expression::Bool(v) => Ok(Value::Bool(v)),
+        _Expression::Land(ref left, ref right) => {
+            if truthy(&evaluate(left, env)?) {
+                Ok(Value::Bool(truthy(&evaluate(right, env)?)))
+            } else {
+                Ok(Value::Bool(false))
+            }
+        }
+        _Expression::Lor(ref left, ref right) => {
+            if truthy(&evaluate(left, env)?) {
+                Ok(Value::Bool(true))
+            } else {
+                Ok(Value::Bool(truthy(&evaluate(right, env)?)))
+            }
+        }
     }
 }
 
