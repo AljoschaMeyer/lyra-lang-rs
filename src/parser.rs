@@ -130,7 +130,9 @@ impl<'a> Parser<'a> {
     // Checks whether the input starts with a (well-known) keyword.
     fn starts_with_a_kw(&mut self) -> bool {
         // TODO update as keywords are added
-        if self.input.starts_with("nil")
+        if self.input.starts_with("if") {
+            return self.input.len() == 2 || !is_ident_byte(self.input.as_bytes()[2]);
+        } else if self.input.starts_with("nil")
         || self.input.starts_with("mut")
         || self.input.starts_with("let") {
             return self.input.len() == 3 || !is_ident_byte(self.input.as_bytes()[3]);
@@ -196,11 +198,59 @@ impl<'a> Parser<'a> {
             }
         }
     }
+    
+    fn p_if(&mut self) -> Result<Expression, ParseError> {
+        let meta = self.meta();
+        if self.peek_kw("if") { // TODO abstract this into a method
+            self.skip_str("if");
+        } else {
+            return Err(ParseIfError::NoIfKw.into());
+        }
+        
+        self.skip_ws();
+        let cond = Box::new(self.p_exp()?);
+        
+        self.skip_ws();
+        if !self.expect('{') {
+            return Err(ParseIfError::NoLBraceThen.into());
+        }
+        
+        self.skip_ws();        
+        let then = self.p_statements()?;
+        
+        self.skip_ws();        
+        if !self.expect('}') {
+            return Err(ParseIfError::NoRBraceThen.into());
+        }
+        
+        self.skip_ws();
+        
+        if self.peek_kw("else") {// TODO abstract this into a method
+            self.skip_str("else");
+            
+            self.skip_ws();
+            if !self.expect('{') {
+                return Err(ParseIfError::NoLBraceElse.into());
+            }
+            
+            self.skip_ws();        
+            let else_ = self.p_statements()?;
+            
+            self.skip_ws();        
+            if !self.expect('}') {
+                return Err(ParseIfError::NoRBraceElse.into());
+            }
+            
+            return Ok(Expression(_Expression::If(cond, then, Some(else_)), meta));
+        } else {
+            return Ok(Expression(_Expression::If(cond, then, None), meta));
+        }
+    }
 
     // Non-leftrecursive expressions
-    fn p_lexp(&mut self) -> Result<Expression, ParseExpressionError> {
+    fn p_lexp(&mut self) -> Result<Expression, ParseError> {
         match self.peek() {
-            None => Err(ParseExpressionError::Empty),
+            None => Err(ParseError::EmptyExp),
             Some(c) if c.is_ascii_alphabetic() => {
                 if self.starts_with_a_kw() {
                     if self.peek_kw("nil") {
@@ -209,19 +259,21 @@ impl<'a> Parser<'a> {
                     } else if self.peek_kw("true") || self.peek_kw("false") {
                         let (b, meta) = self.p_bool().unwrap();
                         Ok(Expression(_Expression::Bool(b), meta))
+                    } else if self.peek_kw("if") {
+                        self.p_if()
                     } else {
-                        Err(ParseExpressionError::NonExpressionKw)
+                        Err(ParseError::KwExp)
                     }
                 } else {
                     let (id, meta) = self.p_id()?;
                     Ok(Expression(_Expression::Id(id), meta))
                 }
             },
-            Some(_) => Err(ParseExpressionError::Leading),
+            Some(_) => Err(ParseError::LeadingExp),
         }
     }
 
-    pub fn p_exp(&mut self) -> Result<Expression, ParseExpressionError> {
+    pub fn p_exp(&mut self) -> Result<Expression, ParseError> {
         let left = self.p_lexp()?;
         let meta = left.1.clone();
         self.skip_ws();
@@ -280,7 +332,7 @@ impl<'a> Parser<'a> {
         }
     }
     
-    fn p_let(&mut self) -> Result<Statement, ParseStatementError> {
+    fn p_let(&mut self) -> Result<Statement, ParseError> {
         let meta = self.meta();
         if self.input.len() == 0 {
             return Err(ParseLetError::Empty.into());
@@ -307,19 +359,22 @@ impl<'a> Parser<'a> {
         }
     }
     
-    fn p_statement(&mut self) -> Result<Statement, ParseStatementError> {
+    // TODO this is sooo ugly
+    fn p_statement(&mut self) -> Result<Statement, ParseError> {
         match self.peek() {
-            None => Err(ParseStatementError::Empty),
+            None => Err(ParseError::EmptyStmt),
             Some(c) if c.is_ascii_alphabetic() => {
                 if self.starts_with_a_kw() {
                     if self.peek_kw("let") {
                         self.p_let()
-                    } else if self.peek_kw("true") || self.peek_kw("false") || self.peek_kw("nil") {
+                    } else if self.peek_kw("mut") || self.peek_kw("else") { // use a function for non-statement keywords (also do this in p_exp for exp keywords?)
+                        let exp = self.p_exp()?;
+                        let meta = exp.1.clone();
+                        Err(ParseError::KwStmt)
+                    } else {
                         let exp = self.p_exp()?;
                         let meta = exp.1.clone();
                         Ok(Statement(_Statement::Exp(exp), meta))
-                    } else {
-                        Err(ParseStatementError::NonStatementKw)
                     }
                 } else {
                     let exp = self.p_exp()?;
@@ -350,7 +405,7 @@ impl<'a> Parser<'a> {
     }
     
     // just semicolon-separated statements, no braces (use p_block for those)
-    pub fn p_program(&mut self) -> Result<Box<[Statement]>, ParseStatementError> {
+    pub fn p_statements(&mut self) -> Result<Box<[Statement]>, ParseError> {
         let mut stmts = Vec::new();
 
         loop {
@@ -376,21 +431,17 @@ pub enum ParseIdError {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseExpressionError {
-    #[fail(display = "expected expression, got end of input")]
-    Empty,
-    #[fail(display = "expected expression, got invalid first character")]
-    Leading,
-    #[fail(display = "expected expression, got a keyword that does not start an expression")]
-    NonExpressionKw,
-    #[fail(display = "erroneous identifier")]
-    Id(#[fail(cause)]ParseIdError),
-}
-
-impl From<ParseIdError> for ParseExpressionError {
-    fn from(err: ParseIdError) -> ParseExpressionError {
-        ParseExpressionError::Id(err)
-    }
+pub enum ParseIfError {
+    #[fail(display = "expected if expression, did not get the `if` keyword")]
+    NoIfKw,
+    #[fail(display = "expected left brace `{{` after the if condition")]
+    NoLBraceThen,
+    #[fail(display = "expected right brace `}}` after the if condition")]
+    NoRBraceThen,
+    #[fail(display = "expected left brace `{{` after the `else` condition")]
+    NoLBraceElse,
+    #[fail(display = "expected right brace `}}` after the `else` condition")]
+    NoRBraceElse,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
@@ -424,25 +475,41 @@ pub enum ParseLetError {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
-pub enum ParseStatementError {
+pub enum ParseError {
+    #[fail(display = "expected expression, got end of input")]
+    EmptyExp,
+    #[fail(display = "expected expression, got invalid first character")]
+    LeadingExp,
+    #[fail(display = "expected expression, got a keyword that does not start an expression")]
+    KwExp,
     #[fail(display = "expected statement, got end of input")]
-    Empty,
+    EmptyStmt,
+    #[fail(display = "expected statement, got invalid first character")]
+    LeadingStmt,
     #[fail(display = "expected statement, got a keyword that does not start a statement")]
-    NonStatementKw,
+    KwStmt,
+    #[fail(display = "erroneous identifier")]
+    Id(#[fail(cause)]ParseIdError),
+    #[fail(display = "erroneous if expression")]
+    If(#[fail(cause)]ParseIfError),
     #[fail(display = "erroneous let statement")]
     Let(#[fail(cause)]ParseLetError),
-    #[fail(display = "erroneous expression in statement")]
-    Exp(#[fail(cause)]ParseExpressionError),
 }
 
-impl From<ParseLetError> for ParseStatementError {
-    fn from(err: ParseLetError) -> ParseStatementError {
-        ParseStatementError::Let(err)
+impl From<ParseIdError> for ParseError {
+    fn from(err: ParseIdError) -> ParseError {
+        ParseError::Id(err)
     }
 }
 
-impl From<ParseExpressionError> for ParseStatementError {
-    fn from(err: ParseExpressionError) -> ParseStatementError {
-        ParseStatementError::Exp(err)
+impl From<ParseIfError> for ParseError {
+    fn from(err: ParseIfError) -> ParseError {
+        ParseError::If(err)
+    }
+}
+
+impl From<ParseLetError> for ParseError {
+    fn from(err: ParseLetError) -> ParseError {
+        ParseError::Let(err)
     }
 }

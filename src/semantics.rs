@@ -129,6 +129,16 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Result<Value, (Value, Re
                 Ok(Value::Bool(truthy(&evaluate(right, env)?)))
             }
         }
+        _Expression::If(ref cond, ref then, ref else_) => {
+            if truthy(&evaluate(cond, env)?) {
+                exec_many(&mut then.iter(), env.clone()).map(|(val, _)| val)
+            } else {
+                match else_ {
+                    Some(else_stmts) => exec_many(&mut else_stmts.iter(), env.clone()).map(|(val, _)| val),
+                    None => Ok(Value::Nil),
+                }
+            }
+        }
     }
 }
 

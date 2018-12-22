@@ -30,6 +30,22 @@ Though many languages influenced the design of lyra, the two most direct influen
 
 Whether these design decisions are actually improvements over those other languages can't be said objectively (well, chances are you are actually better off with clojure). But hopefully, lyra occupies an interesting place in the language design space and can enable productive and enjoyable programming.
 
+---
+
+Toplevel values
+
+- halt
+- is_nil, is_bool, is_foo
+- is_truthy
+- toplevel (returns the current toplevel as a map from strings (holding the identifiers) to the values)
+- eval (string, second arg is a map that becomes the toplevel env (error on non-identifier keys), defaults toplevel())
+- eval_pure (? see require_pure ?)
+- require
+- require_pure (should this alter the behavior of nested require, or should it disallow it?)
+- require_async
+- require_pure_async
+- constants for some errors/error tags?
+
 # Lyra Lang
 
 A dynamic, mostly functional programming language, featuring:

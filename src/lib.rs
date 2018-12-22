@@ -23,7 +23,7 @@ mod tests {
 
     fn run(src: &str) -> Result<(Value, Environment), (Value, Reason)> {
         let mut p = Parser::new(src, Source::other());
-        let program = p.p_program().unwrap();
+        let program = p.p_statements().unwrap();
         let eval = exec_many(&mut program.iter(), Environment::toplevel());
         assert!(p.end());
         eval
@@ -31,7 +31,7 @@ mod tests {
     
     fn assert_syntax_err(src: &str) {
         let mut p = Parser::new(src, Source::other());
-        let program = p.p_program().unwrap();
+        let program = p.p_statements().unwrap();
         // TODO impl checks for unbound identifiers or assignment to immutable identifiers
         assert!(p.end());
     }
@@ -89,5 +89,14 @@ mod tests {
         
         // TODO uncomment when applications are implemented
         // assert_eq!(run("true && halt()").unwrap().0, Value::Bool(true));
+    }
+    
+    #[test]
+    fn test_if() {
+        assert_eq!(run("if true { true }").unwrap().0, Value::Bool(true));
+        // assert_eq!(run("if true { true } else { halt() }").unwrap().0, Value::Bool(true)); // TODO uncomment when applications are implemented
+        assert_eq!(run("if false { false } else { true }").unwrap().0, Value::Bool(true));
+        // assert_eq!(run("if false { halt() } else { true }").unwrap().0, Value::Bool(true)); // TODO uncomment when applications are implemented
+        assert_eq!(run("if false { true }").unwrap().0, Value::Nil);
     }
 }

@@ -54,6 +54,9 @@ pub enum _Expression {
     Bool(bool),
     Land(Box<Expression>, Box<Expression>),
     Lor(Box<Expression>, Box<Expression>),
+    If(Box<Expression>, Box<[Statement]>, Option<Box<[Statement]>>),
+    
+    // operators, literals, application, case, parens (?)
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
