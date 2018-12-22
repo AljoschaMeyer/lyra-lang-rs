@@ -159,19 +159,14 @@ impl<'a> Parser<'a> {
 
         match self.next() {
             None => return Err(ParseIdError::Empty),
-            Some('A'...'Z') | Some('a'...'z') | Some('_') => {},
+            Some('A'...'Z') | Some('a'...'z') => {},
             Some(_) => return Err(ParseIdError::Leading),
         }
 
         self.skip_while(|c| c.is_ascii_alphanumeric() || c == '_');
         
         let id = start[..start.len() - self.input.len()].to_string();
-        
-        if id == "_" {
-            return Err(ParseIdError::Blank);
-        } else {
-            return Ok((id, meta));
-        }
+        return Ok((id, meta));
     }
 
     fn p_nil(&mut self) -> Option<((), Meta)> {
@@ -339,12 +334,10 @@ impl<'a> Parser<'a> {
 pub enum ParseIdError {
     #[fail(display = "expected identifier, got end of input")]
     Empty,
-    #[fail(display = "expected identifier, got neither an ascii alphanumeric character nor an underscore")]
+    #[fail(display = "expected identifier, did not get an ascii alphanumeric character")]
     Leading,
     #[fail(display = "expected identifier, got a keyword")]
     Kw,
-    #[fail(display = "expected identifier, got a lonely underscore")]
-    Blank,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
