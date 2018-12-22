@@ -60,7 +60,8 @@ pub struct Statement(pub _Statement, pub Meta);
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub enum _Statement {
     Exp(Expression),
-    Let(Pattern, Expression)
+    Let(Pattern, Expression),
+    Assign(String, Expression),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]

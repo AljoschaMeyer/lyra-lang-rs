@@ -3,7 +3,7 @@
 extern crate failure;
 #[macro_use] extern crate failure_derive;
 extern crate im_rc;
-#[macro_use] extern crate lazy_static;
+#[macro_use] extern crate ref_thread_local;
 #[macro_use] extern crate gc_derive;
 #[macro_use] extern crate gc;
 extern crate num;
@@ -28,6 +28,13 @@ mod tests {
         assert!(p.end());
         eval
     }
+    
+    fn assert_syntax_err(src: &str) {
+        let mut p = Parser::new(src, Source::other());
+        let program = p.p_program().unwrap();
+        // TODO impl checks for unbound identifiers or assignment to immutable identifiers
+        assert!(p.end());
+    }
 
     #[test]
     fn test_nil() {
@@ -51,6 +58,14 @@ mod tests {
         assert_eq!(run("let nil = nil; true").unwrap().0, Value::Bool(true));
         assert!(run("let nil = true; false").is_err());
         assert!(run("let false = true").is_err());
-        // TODO mutability
+        assert_eq!(run("let x = false; let x = true; x").unwrap().0, Value::Bool(true));
+    }
+    
+    #[test]
+    fn test_assign() {
+        assert_eq!(run("let mut x = true; x = false; x").unwrap().0, Value::Bool(false));
+        assert_eq!(run("let mut x = true; x = false").unwrap().0, Value::Nil);
+        assert_syntax_err("let x = true; x = false");
+        assert_syntax_err("let mut x = true; let x = true; x = false");
     }
 }

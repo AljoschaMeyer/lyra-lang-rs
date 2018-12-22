@@ -1,4 +1,5 @@
 use gc::{Gc, GcCell};
+use ref_thread_local::RefThreadLocal;
 
 use super::gc_foreign::OrdMap;
 use super::syntax::{Meta, Expression, _Expression, Statement, _Statement, Pattern, _Pattern};
@@ -65,7 +66,7 @@ impl Environment {
 
     /// Look up an identifier in the environment.
     ///
-    /// Since there's a static check that prohibits free variables, this can never fail at runtime.
+    /// Panics if the id is unbound, but that's a static parse-error anyways.
     pub fn lookup(&self, id: &str) -> Value {
         match self.0.get(id).unwrap() {
             Binding::Immutable(val) => val.clone(),
@@ -82,6 +83,16 @@ impl Environment {
         };
         
         Environment(self.0.update(id, binding))
+    }
+    
+    /// Assign a new value to a mutable binding.
+    ///
+    /// Panics if the id is unbound or immutable, but that's a static parse-error anyways.
+    pub fn assign(&self, id: &str, val: Value) {
+        match self.0.get(id).unwrap() {
+            Binding::Immutable(_) => panic!("Tried to assign to immutable binding"),
+            Binding::Mutable(val_cell) => *val_cell.borrow_mut() = val,
+        }
     }
 }
 
@@ -111,6 +122,11 @@ pub fn exec(stmt: &Statement, env: Environment) -> Result<(Value, Environment), 
         }
         _Statement::Let(ref lhs, ref rhs) => {
             evaluate(rhs, &env).and_then(|val| destructure(lhs, &val, env))
+        }
+        _Statement::Assign(ref lhs, ref rhs) => {
+            let val = evaluate(rhs, &env)?;
+            env.assign(lhs, val);
+            Ok((Value::Nil, env))
         }
     }
 }
@@ -146,7 +162,7 @@ pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) 
         _Pattern::Nil => {
             match val {
                 Value::Nil => Ok((Value::Nil, env)),
-                _ => Err((builtins::ERR_REFUTED_NIL.clone(), Reason(_Reason::Refuted {
+                _ => Err((builtins::ERR_REFUTED_NIL.borrow().clone(), Reason(_Reason::Refuted {
                     expected: RefutationKind::Nil,
                     actual: val.clone(),
                 }, meta.clone())))
@@ -156,7 +172,7 @@ pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) 
         _Pattern::Bool(b) => {
             match val {
                 Value::Bool(b2) if b == b2 => Ok((Value::Nil, env)),
-                _ => Err((builtins::ERR_REFUTED_BOOL.clone(), Reason(_Reason::Refuted {
+                _ => Err((builtins::ERR_REFUTED_BOOL.borrow().clone(), Reason(_Reason::Refuted {
                     expected: RefutationKind::Bool(*b),
                     actual: val.clone(),
                 }, meta.clone())))

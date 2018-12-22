@@ -159,7 +159,7 @@ impl<'a> Parser<'a> {
 
         match self.next() {
             None => return Err(ParseIdError::Empty),
-            Some('A'...'Z') | Some('a'...'z') => {},
+            Some(c) if c.is_ascii_alphabetic() => {}
             Some(_) => return Err(ParseIdError::Leading),
         }
 
@@ -201,7 +201,7 @@ impl<'a> Parser<'a> {
     fn p_lexp(&mut self) -> Result<Expression, ParseExpressionError> {
         match self.peek() {
             None => Err(ParseExpressionError::Empty),
-            Some(c) if c.is_ascii_alphabetic() || c == '_' => {
+            Some(c) if c.is_ascii_alphabetic() => {
                 if self.starts_with_a_kw() {
                     if self.peek_kw("nil") {
                         let meta = self.p_nil().unwrap().1;
@@ -259,7 +259,7 @@ impl<'a> Parser<'a> {
                         self.skip_str("mut");
                         self.skip_ws();
                         let (id, meta) = self.p_id()?; // meta points to the identifier, not the mut keyword
-                        Ok(Pattern(_Pattern::Id { id, mutable: false }, meta))
+                        Ok(Pattern(_Pattern::Id { id, mutable: true }, meta))
                     } else {
                         Err(ParsePatternError::NonPatternKw)
                     }
@@ -297,23 +297,50 @@ impl<'a> Parser<'a> {
         } else {
             return Err(ParseLetError::Leading.into());
         }
-}
-
+    }
+    
     fn p_statement(&mut self) -> Result<Statement, ParseStatementError> {
         match self.peek() {
             None => Err(ParseStatementError::Empty),
-            Some(_) => {
-                if self.peek_kw("let") {
-                    self.p_let()
+            Some(c) if c.is_ascii_alphabetic() => {
+                if self.starts_with_a_kw() {
+                    if self.peek_kw("let") {
+                        self.p_let()
+                    } else if self.peek_kw("true") || self.peek_kw("false") || self.peek_kw("nil") {
+                        let exp = self.p_exp()?;
+                        let meta = exp.1.clone();
+                        Ok(Statement(_Statement::Exp(exp), meta))
+                    } else {
+                        Err(ParseStatementError::NonStatementKw)
+                    }
                 } else {
                     let exp = self.p_exp()?;
                     let meta = exp.1.clone();
-                    Ok(Statement(_Statement::Exp(exp), meta))
+                    
+                    match exp.0 {
+                        _Expression::Id(ref id) => {
+                            match self.peek() {
+                                Some('=') => {
+                                    self.skip();
+                                    self.skip_ws();
+                                    let rhs = self.p_exp()?;
+                                    Ok(Statement(_Statement::Assign(id.to_string(), rhs), meta))
+                                }
+                                _ => Ok(Statement(_Statement::Exp(exp), meta)),
+                            }
+                        }
+                        _ => Ok(Statement(_Statement::Exp(exp), meta)),
+                    }                  
                 }
             },
+            Some(_) => {
+                let exp = self.p_exp()?;
+                let meta = exp.1.clone();
+                Ok(Statement(_Statement::Exp(exp), meta))
+            }
         }
     }
-
+    
     // just semicolon-separated statements, no braces (use p_block for those)
     pub fn p_program(&mut self) -> Result<Box<[Statement]>, ParseStatementError> {
         let mut stmts = Vec::new();
