@@ -140,7 +140,8 @@ impl<'a> Parser<'a> {
             return self.input.len() == 4 || !is_ident_byte(self.input.as_bytes()[4]);
         } else if self.input.starts_with("false")
         || self.input.starts_with("throw")
-        || self.input.starts_with("break") {
+        || self.input.starts_with("break")
+        || self.input.starts_with("while") {
             return self.input.len() == 5 || !is_ident_byte(self.input.as_bytes()[5]);
         } else if self.input.starts_with("return") {
             return self.input.len() == 6 || !is_ident_byte(self.input.as_bytes()[6]);
@@ -250,6 +251,33 @@ impl<'a> Parser<'a> {
             return Ok(Expression(_Expression::If(cond, then, None), meta));
         }
     }
+    
+    fn p_while(&mut self) -> Result<Expression, ParseError> {
+        let meta = self.meta();
+        if self.peek_kw("while") { // TODO abstract this into a method
+            self.skip_str("while");
+        } else {
+            return Err(ParseWhileError::NoWhileKw.into());
+        }
+        
+        self.skip_ws();
+        let cond = Box::new(self.p_exp()?);
+        
+        self.skip_ws();
+        if !self.expect('{') {
+            return Err(ParseWhileError::NoLBrace.into());
+        }
+        
+        self.skip_ws();        
+        let body = self.p_statements()?;
+        
+        self.skip_ws();        
+        if !self.expect('}') {
+            return Err(ParseWhileError::NoRBrace.into());
+        }
+        
+        return Ok(Expression(_Expression::While(cond, body), meta));
+    }
 
     // Non-leftrecursive expressions
     fn p_lexp(&mut self) -> Result<Expression, ParseError> {
@@ -265,6 +293,8 @@ impl<'a> Parser<'a> {
                         Ok(Expression(_Expression::Bool(b), meta))
                     } else if self.peek_kw("if") {
                         self.p_if()
+                    } else if self.peek_kw("while") {
+                        self.p_while()
                     } else {
                         Err(ParseError::KwExp)
                     }
@@ -434,8 +464,28 @@ impl<'a> Parser<'a> {
         }
     }
     
-    // just semicolon-separated statements, no braces (use p_block for those)
+    // semicolon-separated statements, terminated by a `}` (which is *not* consumed by this parser)
     pub fn p_statements(&mut self) -> Result<Box<[Statement]>, ParseError> {
+        let mut stmts = Vec::new();
+        
+        self.skip_ws();
+        if let Some('}') = self.peek() {
+            return Ok(stmts.into_boxed_slice());
+        }
+
+        loop {
+            self.skip_ws();
+            stmts.push(self.p_statement()?);
+            self.skip_ws();
+            match self.peek() {
+                Some(';') => self.skip(),
+                _ => return Ok(stmts.into_boxed_slice()),
+            }
+        }
+    }
+    
+    // semicolon-separated statements, no braces
+    pub fn p_program(&mut self) -> Result<Box<[Statement]>, ParseError> {
         let mut stmts = Vec::new();
         
         if self.end() {
@@ -451,7 +501,7 @@ impl<'a> Parser<'a> {
                 _ => return Ok(stmts.into_boxed_slice()),
             }
         }
-    }
+    }    
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
@@ -470,12 +520,22 @@ pub enum ParseIfError {
     NoIfKw,
     #[fail(display = "expected left brace `{{` after the if condition")]
     NoLBraceThen,
-    #[fail(display = "expected right brace `}}` after the if condition")]
+    #[fail(display = "expected right brace `}}` after the then branch")]
     NoRBraceThen,
-    #[fail(display = "expected left brace `{{` after the `else` condition")]
+    #[fail(display = "expected left brace `{{` after the `else` keyword")]
     NoLBraceElse,
-    #[fail(display = "expected right brace `}}` after the `else` condition")]
+    #[fail(display = "expected right brace `}}` after the else branch")]
     NoRBraceElse,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseWhileError {
+    #[fail(display = "expected while expression, did not get the `while` keyword")]
+    NoWhileKw,
+    #[fail(display = "expected left brace `{{` after the while condition")]
+    NoLBrace,
+    #[fail(display = "expected right brace `}}` after the while loop body")]
+    NoRBrace,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
@@ -528,6 +588,8 @@ pub enum ParseError {
     Id(#[fail(cause)]ParseIdError),
     #[fail(display = "erroneous if expression")]
     If(#[fail(cause)]ParseIfError),
+    #[fail(display = "erroneous while expression")]
+    While(#[fail(cause)]ParseWhileError),
     #[fail(display = "erroneous let statement")]
     Let(#[fail(cause)]ParseLetError),
 }
@@ -541,6 +603,12 @@ impl From<ParseIdError> for ParseError {
 impl From<ParseIfError> for ParseError {
     fn from(err: ParseIfError) -> ParseError {
         ParseError::If(err)
+    }
+}
+
+impl From<ParseWhileError> for ParseError {
+    fn from(err: ParseWhileError) -> ParseError {
+        ParseError::While(err)
     }
 }
 

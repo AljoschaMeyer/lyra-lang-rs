@@ -23,7 +23,7 @@ mod tests {
 
     fn run(src: &str) -> Result<Value, (Value, Reason)> {
         let mut p = Parser::new(src, Source::other());
-        let program = p.p_statements().unwrap();
+        let program = p.p_program().unwrap();
         let eval = exec_many(&mut program.iter(), Environment::toplevel());
         assert!(p.end());
         
@@ -108,8 +108,10 @@ mod tests {
         assert_eq!(run("if true { true }").unwrap(), Value::Bool(true));
         // assert_eq!(run("if true { true } else { halt() }").unwrap(), Value::Bool(true)); // TODO uncomment when applications are implemented
         assert_eq!(run("if false { false } else { true }").unwrap(), Value::Bool(true));
+        assert_eq!(run("if true {} else { true }").unwrap(), Value::Nil);
         // assert_eq!(run("if false { halt() } else { true }").unwrap(), Value::Bool(true)); // TODO uncomment when applications are implemented
         assert_eq!(run("if false { true }").unwrap(), Value::Nil);
+        assert_eq!(run("if nil { true }").unwrap(), Value::Nil);
     }
     
     #[test]
@@ -125,6 +127,16 @@ mod tests {
     #[test]
     fn test_break() {
         assert_eq!(run("break true; false").unwrap(), Value::Bool(true));
-        // TODO test behavior in loops
+    }
+    
+    #[test]
+    fn test_while() {
+        assert_eq!(run("while false { false }; true").unwrap(), Value::Bool(true));
+        assert_eq!(run("while false {}").unwrap(), Value::Nil);
+        assert_eq!(run("let mut x = true; while x { x = false; true }").unwrap(), Value::Bool(true));
+        assert_eq!(run("while true { return false }").unwrap(), Value::Bool(false));
+        assert_eq!(run("while true { return false }; true").unwrap(), Value::Bool(false));
+        assert_eq!(run("while true { break false }").unwrap(), Value::Bool(false));
+        assert_eq!(run("while true { break false }; true").unwrap(), Value::Bool(true));
     }
 }

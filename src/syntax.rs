@@ -55,8 +55,9 @@ pub enum _Expression {
     Land(Box<Expression>, Box<Expression>),
     Lor(Box<Expression>, Box<Expression>),
     If(Box<Expression>, Box<[Statement]>, Option<Box<[Statement]>>),
+    While(Box<Expression>, Box<[Statement]>),
     
-    // operators, literals, application, case, try-catch, while, for
+    // operators, literals, application, case, try-catch, for, map access, indexing
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -71,7 +72,7 @@ pub enum _Statement {
     Return(Expression),
     Break(Expression),
     
-    // let await?, await for?
+    //  rec, let await?, await for?
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]

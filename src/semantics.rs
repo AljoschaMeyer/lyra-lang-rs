@@ -213,6 +213,28 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                 }
             })
         }
+        _Expression::While(ref cond, ref body) => {
+            let mut last_loop_val = Value::Nil;
+            loop {
+                match evaluate(cond, env) {
+                    Eval::Default(val) => {
+                        if truthy(&val) {
+                            match exec_many(&mut body.iter(), env.clone()).into() {
+                                Eval::Default(val) => last_loop_val = val,
+                                Eval::Error(e, r) => return Eval::Error(e, r),
+                                Eval::Return(val) => return Eval::Return(val),
+                                Eval::Break(val) => return Eval::Default(val),
+                            }
+                        } else {
+                            return Eval::Default(last_loop_val);
+                        }
+                    }
+                    Eval::Error(e, r) => return Eval::Error(e, r),
+                    Eval::Return(val) => return Eval::Return(val),
+                    Eval::Break(val) => return Eval::Break(val),
+                }
+            }
+        }
     }
 }
 
