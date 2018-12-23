@@ -69,8 +69,9 @@ pub enum _Statement {
     Assign(String, Expression),
     Throw(Expression),
     Return(Expression),
+    Break(Expression),
     
-    // return, break, let await?, await for?
+    // let await?, await for?
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]

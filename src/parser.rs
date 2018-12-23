@@ -139,7 +139,8 @@ impl<'a> Parser<'a> {
         } else if self.input.starts_with("true") {
             return self.input.len() == 4 || !is_ident_byte(self.input.as_bytes()[4]);
         } else if self.input.starts_with("false")
-        || self.input.starts_with("throw") {
+        || self.input.starts_with("throw")
+        || self.input.starts_with("break") {
             return self.input.len() == 5 || !is_ident_byte(self.input.as_bytes()[5]);
         } else if self.input.starts_with("return") {
             return self.input.len() == 6 || !is_ident_byte(self.input.as_bytes()[6]);
@@ -393,6 +394,11 @@ impl<'a> Parser<'a> {
                         self.skip_str("return");
                         self.skip_ws();
                         Ok(Statement(_Statement::Return(self.p_exp()?), meta))
+                    } else if self.peek_kw("break") {
+                        let meta = self.meta();
+                        self.skip_str("break");
+                        self.skip_ws();
+                        Ok(Statement(_Statement::Break(self.p_exp()?), meta))
                     } else if self.peek_kw("mut") || self.peek_kw("else") { // use a function for non-statement keywords (also do this in p_exp for exp keywords?)
                         Err(ParseError::KwStmt)
                     } else {

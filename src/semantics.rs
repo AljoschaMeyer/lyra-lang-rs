@@ -111,7 +111,8 @@ pub enum Exec {
     Error(Value, Reason),
     /// Executed a return statement.
     Return(Value),
-    // TODO Break
+    /// Executed a break statement.
+    Break(Value),
 }
 
 impl Exec {
@@ -120,23 +121,16 @@ impl Exec {
             Eval::Default(val) => Exec::Default(val, env),
             Eval::Error(e, r) => Exec::Error(e, r),
             Eval::Return(val) => Exec::Return(val),
+            Eval::Break(val) => Exec::Break(val),
         }
     }
-    
-    // TODO remove or uncomment this
-    // fn map<F: FnOnce(&Value) -> Value>(self, f: F) -> Exec {
-    //     match self {
-    //         Exec::Default(ref val, ref env) => Exec::Default(f(val)),
-    //         Exec::Error(val, r) => Exec::Error(val, r),
-    //         Exec::Return(val) => Exec::Return(val),
-    //     }
-    // }
     
     fn and_then<F: FnOnce(Value, Environment) -> Exec>(self, f: F) -> Exec {
         match self {
             Exec::Default(val, env) => f(val, env),
             Exec::Error(val, r) => Exec::Error(val, r),
             Exec::Return(val) => Exec::Return(val),
+            Exec::Break(val) => Exec::Break(val),
         }
     }
 }
@@ -148,6 +142,8 @@ pub enum Eval {
     /// Somewhere in the expression, a return statement has been evaluated (so if this Eval is
     /// part of executing a series of statements, the execution can short-circuit)
     Return(Value),
+    /// Like `Return`, but for break statements.
+    Break(Value),
 }
 
 impl Eval {
@@ -156,6 +152,7 @@ impl Eval {
             Eval::Default(val) => Eval::Default(f(val)),
             Eval::Error(val, r) => Eval::Error(val, r),
             Eval::Return(val) => Eval::Return(val),
+            Eval::Break(val) => Eval::Break(val),
         }
     }
     
@@ -164,6 +161,7 @@ impl Eval {
             Eval::Default(val) => f(val),
             Eval::Error(val, r) => Eval::Error(val, r),
             Eval::Return(val) => Eval::Return(val),
+            Eval::Break(val) => Eval::Break(val),
         }
     }
 }
@@ -174,6 +172,7 @@ impl From<Exec> for Eval {
             Exec::Default(val, _) => Eval::Default(val),
             Exec::Error(e, r) => Eval::Error(e, r),
             Exec::Return(val) => Eval::Return(val),
+            Exec::Break(val) => Eval::Break(val),
         }
     }
 }
@@ -246,6 +245,9 @@ pub fn exec(stmt: &Statement, env: Environment) -> Exec {
         _Statement::Return(ref exp) => {
             Exec::from_eval(evaluate(exp, &env).and_then(|val| Eval::Return(val)), env)
         }
+        _Statement::Break(ref exp) => {
+            Exec::from_eval(evaluate(exp, &env).and_then(|val| Eval::Break(val)), env)
+        }
     }
 }
 
@@ -265,6 +267,7 @@ pub fn exec_many<'i, I>(stmts: &'i mut I, mut env: Environment) -> Exec
                 }
                 Exec::Error(e, r) => return Exec::Error(e, r),
                 Exec::Return(val) => return Exec::Return(val),
+                Exec::Break(val) => return Exec::Break(val),
             }
         }
 

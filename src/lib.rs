@@ -28,7 +28,7 @@ mod tests {
         assert!(p.end());
         
         match eval {
-            Exec::Default(val, _) | Exec::Return(val) => Ok(val),
+            Exec::Default(val, _) | Exec::Return(val) | Exec::Break(val) => Ok(val),
             Exec::Error(e, r) => Err((e, r))
         }
     }
@@ -114,11 +114,17 @@ mod tests {
     
     #[test]
     fn test_throw() {
-        assert_eq!(run("throw true").unwrap_err().0, Value::Bool(true));
+        assert_eq!(run("throw true; false").unwrap_err().0, Value::Bool(true));
     }
     
     #[test]
     fn test_return() {
         assert_eq!(run("return true; false").unwrap(), Value::Bool(true));
+    }
+    
+    #[test]
+    fn test_break() {
+        assert_eq!(run("break true; false").unwrap(), Value::Bool(true));
+        // TODO test behavior in loops
     }
 }
