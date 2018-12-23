@@ -269,6 +269,19 @@ impl<'a> Parser<'a> {
                     Ok(Expression(_Expression::Id(id), meta))
                 }
             },
+            Some('(') => {
+                self.skip();
+                self.skip_ws();
+                
+                let exp = self.p_exp()?;
+                
+                self.skip_ws();
+                if self.expect(')') {
+                    return Ok(exp);
+                } else {
+                    Err(ParseError::RParen)
+                }
+            }
             Some(_) => Err(ParseError::LeadingExp),
         }
     }
@@ -368,8 +381,6 @@ impl<'a> Parser<'a> {
                     if self.peek_kw("let") {
                         self.p_let()
                     } else if self.peek_kw("mut") || self.peek_kw("else") { // use a function for non-statement keywords (also do this in p_exp for exp keywords?)
-                        let exp = self.p_exp()?;
-                        let meta = exp.1.clone();
                         Err(ParseError::KwStmt)
                     } else {
                         let exp = self.p_exp()?;
@@ -476,6 +487,8 @@ pub enum ParseLetError {
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
 pub enum ParseError {
+    #[fail(display = "expected a right parentheses `)` to close a left parentheses")]
+    RParen,
     #[fail(display = "expected expression, got end of input")]
     EmptyExp,
     #[fail(display = "expected expression, got invalid first character")]

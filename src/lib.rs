@@ -92,6 +92,13 @@ mod tests {
     }
     
     #[test]
+    fn test_parens() {
+        assert_eq!(run("false && false || true").unwrap().0, Value::Bool(false));
+        assert_eq!(run("false && (false || true)").unwrap().0, Value::Bool(false));
+        assert_eq!(run("(false && false) || true").unwrap().0, Value::Bool(true));
+    }
+    
+    #[test]
     fn test_if() {
         assert_eq!(run("if true { true }").unwrap().0, Value::Bool(true));
         // assert_eq!(run("if true { true } else { halt() }").unwrap().0, Value::Bool(true)); // TODO uncomment when applications are implemented
