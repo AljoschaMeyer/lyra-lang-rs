@@ -56,7 +56,7 @@ pub enum _Expression {
     Lor(Box<Expression>, Box<Expression>),
     If(Box<Expression>, Box<[Statement]>, Option<Box<[Statement]>>),
     
-    // operators, literals, application, case, try-catch, throw, while, for
+    // operators, literals, application, case, try-catch, while, for
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -67,6 +67,7 @@ pub enum _Statement {
     Exp(Expression),
     Let(Pattern, Expression),
     Assign(String, Expression),
+    Throw(Expression),
     
     // return, break, let await?, await for?
 }

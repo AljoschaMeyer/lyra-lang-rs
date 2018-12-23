@@ -159,6 +159,12 @@ pub fn exec(stmt: &Statement, env: Environment) -> Result<(Value, Environment), 
             env.assign(lhs, val);
             Ok((Value::Nil, env))
         }
+        _Statement::Throw(ref exp) => {
+            match evaluate(exp, &env) {
+                Ok(val) => Err((val, Reason(_Reason::Thrown, exp.1.clone()))),
+                Err(err) => Err(err),
+            }
+        }
     }
 }
 

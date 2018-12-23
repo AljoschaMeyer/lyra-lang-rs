@@ -106,4 +106,9 @@ mod tests {
         // assert_eq!(run("if false { halt() } else { true }").unwrap().0, Value::Bool(true)); // TODO uncomment when applications are implemented
         assert_eq!(run("if false { true }").unwrap().0, Value::Nil);
     }
+    
+    #[test]
+    fn test_throw() {
+        assert_eq!(run("throw true").unwrap_err().0, Value::Bool(true));
+    }
 }
