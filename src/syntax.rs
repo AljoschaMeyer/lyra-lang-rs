@@ -68,6 +68,7 @@ pub enum _Statement {
     Let(Pattern, Expression),
     Assign(String, Expression),
     Throw(Expression),
+    Return(Expression),
     
     // return, break, let await?, await for?
 }

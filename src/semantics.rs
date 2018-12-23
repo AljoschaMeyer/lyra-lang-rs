@@ -103,41 +103,116 @@ fn truthy(val: &Value) -> bool {
     }
 }
 
+/// The outcome of executing a statement.
+pub enum Exec {
+    /// The statement has been executed, the (possibly modified) environment is returned together with its value.
+    Default(Value, Environment),
+    /// For some reason (type errors, throw statements, etc.), an error value was produced.
+    Error(Value, Reason),
+    /// Executed a return statement.
+    Return(Value),
+    // TODO Break
+}
+
+impl Exec {
+    pub fn from_eval(eval: Eval, env: Environment) -> Exec {
+        match eval {
+            Eval::Default(val) => Exec::Default(val, env),
+            Eval::Error(e, r) => Exec::Error(e, r),
+            Eval::Return(val) => Exec::Return(val),
+        }
+    }
+    
+    // TODO remove or uncomment this
+    // fn map<F: FnOnce(&Value) -> Value>(self, f: F) -> Exec {
+    //     match self {
+    //         Exec::Default(ref val, ref env) => Exec::Default(f(val)),
+    //         Exec::Error(val, r) => Exec::Error(val, r),
+    //         Exec::Return(val) => Exec::Return(val),
+    //     }
+    // }
+    
+    fn and_then<F: FnOnce(Value, Environment) -> Exec>(self, f: F) -> Exec {
+        match self {
+            Exec::Default(val, env) => f(val, env),
+            Exec::Error(val, r) => Exec::Error(val, r),
+            Exec::Return(val) => Exec::Return(val),
+        }
+    }
+}
+
+/// The outcome of evluating an expression.
+pub enum Eval {
+    Default(Value),
+    Error(Value, Reason),
+    /// Somewhere in the expression, a return statement has been evaluated (so if this Eval is
+    /// part of executing a series of statements, the execution can short-circuit)
+    Return(Value),
+}
+
+impl Eval {
+    fn map<F: FnOnce(Value) -> Value>(self, f: F) -> Eval {
+        match self {
+            Eval::Default(val) => Eval::Default(f(val)),
+            Eval::Error(val, r) => Eval::Error(val, r),
+            Eval::Return(val) => Eval::Return(val),
+        }
+    }
+    
+    fn and_then<F: FnOnce(Value) -> Eval>(self, f: F) -> Eval {
+        match self {
+            Eval::Default(val) => f(val),
+            Eval::Error(val, r) => Eval::Error(val, r),
+            Eval::Return(val) => Eval::Return(val),
+        }
+    }
+}
+
+impl From<Exec> for Eval {
+    fn from(exec: Exec) -> Eval {
+        match exec {
+            Exec::Default(val, _) => Eval::Default(val),
+            Exec::Error(e, r) => Eval::Error(e, r),
+            Exec::Return(val) => Eval::Return(val),
+        }
+    }
+}
+
 /// Turns an expression (syntax) into a value (semantics), looking up bindings in the given
 /// environment (and modifying it in case of assignments nested in the expression).
 ///
 /// `Err` if the evaluation throws, `Ok` otherwise.
-pub fn evaluate(exp: &Expression, env: &Environment) -> Result<Value, (Value, Reason)> {
+pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
     // TODO trampoline tail-calls
     let _ = env;
 
     match exp.0 {
-        _Expression::Id(ref id) => Ok(env.lookup(id)),
-        _Expression::Nil => Ok(Value::Nil),
-        _Expression::Bool(v) => Ok(Value::Bool(v)),
+        _Expression::Id(ref id) => Eval::Default(env.lookup(id)),
+        _Expression::Nil => Eval::Default(Value::Nil),
+        _Expression::Bool(v) => Eval::Default(Value::Bool(v)),
         _Expression::Land(ref left, ref right) => {
-            if truthy(&evaluate(left, env)?) {
-                Ok(Value::Bool(truthy(&evaluate(right, env)?)))
-            } else {
-                Ok(Value::Bool(false))
+            match evaluate(left, env) {
+                Eval::Default(ref val) if truthy(val) => {
+                    evaluate(right, env).map(|val| Value::Bool(truthy(&val)))
+                }
+                _ => Eval::Default(Value::Bool(false)),
             }
         }
         _Expression::Lor(ref left, ref right) => {
-            if truthy(&evaluate(left, env)?) {
-                Ok(Value::Bool(true))
-            } else {
-                Ok(Value::Bool(truthy(&evaluate(right, env)?)))
+            match evaluate(left, env) {
+                Eval::Default(ref val) if truthy(val) => Eval::Default(Value::Bool(true)),
+                _ => evaluate(right, env).map(|val| Value::Bool(truthy(&val))),
             }
         }
         _Expression::If(ref cond, ref then, ref else_) => {
-            if truthy(&evaluate(cond, env)?) {
-                exec_many(&mut then.iter(), env.clone()).map(|(val, _)| val)
+            evaluate(cond, env).and_then(|cond_val| if truthy(&cond_val) {
+                exec_many(&mut then.iter(), env.clone()).into()
             } else {
                 match else_ {
-                    Some(else_stmts) => exec_many(&mut else_stmts.iter(), env.clone()).map(|(val, _)| val),
-                    None => Ok(Value::Nil),
+                    Some(else_stmts) => exec_many(&mut else_stmts.iter(), env.clone()).into(),
+                    None => Eval::Default(Value::Nil),
                 }
-            }
+            })
         }
     }
 }
@@ -146,78 +221,85 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Result<Value, (Value, Re
 /// environment in case of (nested) assignments), as well as the resulting value.
 ///
 /// `Err` if the execution throws, `Ok` otherwise.
-pub fn exec(stmt: &Statement, env: Environment) -> Result<(Value, Environment), (Value, Reason)> {
+pub fn exec(stmt: &Statement, env: Environment) -> Exec {
     match stmt.0 {
         _Statement::Exp(ref exp) => {
-            evaluate(exp, &env).map(|val| (val, env))
+            Exec::from_eval(evaluate(exp, &env), env)
         }
         _Statement::Let(ref lhs, ref rhs) => {
-            evaluate(rhs, &env).and_then(|val| destructure(lhs, &val, env))
+            Exec::from_eval(evaluate(rhs, &env), env)
+                .and_then(|val, env| destructure(lhs, &val, env))
         }
         _Statement::Assign(ref lhs, ref rhs) => {
-            let val = evaluate(rhs, &env)?;
-            env.assign(lhs, val);
-            Ok((Value::Nil, env))
+            Exec::from_eval(evaluate(rhs, &env).map(|val| {
+                env.assign(lhs, val);
+                Value::Nil
+            }), env)
         }
         _Statement::Throw(ref exp) => {
-            match evaluate(exp, &env) {
-                Ok(val) => Err((val, Reason(_Reason::Thrown, exp.1.clone()))),
-                Err(err) => Err(err),
-            }
+            Exec::from_eval(
+                evaluate(exp, &env)
+                    .and_then(|val| Eval::Error(val, Reason(_Reason::Thrown, exp.1.clone()))),
+                env
+            )
+        }
+        _Statement::Return(ref exp) => {
+            Exec::from_eval(evaluate(exp, &env).and_then(|val| Eval::Return(val)), env)
         }
     }
 }
 
 /// Execute multiple statements in sequence, threading the environments through, short-circuiting
-/// upon throws.
+/// upon throws, returns, and breaks.
 ///
 /// For zero statements, this returns the environment unchanged and Ok(Value::Nil).
-pub fn exec_many<'i, I>(stmts: &'i mut I, mut env: Environment) -> Result<(Value, Environment), (Value, Reason)>
+pub fn exec_many<'i, I>(stmts: &'i mut I, mut env: Environment) -> Exec
     where I: Iterator<Item = &'i Statement> {
         let mut val = Value::Nil;
 
         for stmt in stmts {
             match exec(stmt, env) {
-                Ok((new_val, new_env)) => {
+                Exec::Default(new_val, new_env) => {
                     val = new_val;
                     env = new_env;
                 }
-                Err(err) => return Err(err),
+                Exec::Error(e, r) => return Exec::Error(e, r),
+                Exec::Return(val) => return Exec::Return(val),
             }
         }
 
-        return Ok((val, env));
+        return Exec::Default(val, env);
 }
 
 /// Returns a new environment, adding bindings by destructuring the value according to the pattern.
 ///
 /// `Err` if the pattern is refuted, `Ok(Value::Nil)` otherwise.
-pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) -> Result<(Value, Environment), (Value, Reason)> {
+pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) -> Exec {
     match pat {
-        _Pattern::Blank => Ok((Value::Nil, env)),
+        _Pattern::Blank => Exec::Default(Value::Nil, env),
         
         _Pattern::Nil => {
             match val {
-                Value::Nil => Ok((Value::Nil, env)),
-                _ => Err((builtins::ERR_REFUTED_NIL.borrow().clone(), Reason(_Reason::Refuted {
+                Value::Nil => Exec::Default(Value::Nil, env),
+                _ => Exec::Error(builtins::ERR_REFUTED_NIL.borrow().clone(), Reason(_Reason::Refuted {
                     expected: RefutationKind::Nil,
                     actual: val.clone(),
-                }, meta.clone())))
+                }, meta.clone())),
             }
         }
         
         _Pattern::Bool(b) => {
             match val {
-                Value::Bool(b2) if b == b2 => Ok((Value::Nil, env)),
-                _ => Err((builtins::ERR_REFUTED_BOOL.borrow().clone(), Reason(_Reason::Refuted {
+                Value::Bool(b2) if b == b2 => Exec::Default(Value::Nil, env),
+                _ => Exec::Error(builtins::ERR_REFUTED_BOOL.borrow().clone(), Reason(_Reason::Refuted {
                     expected: RefutationKind::Bool(*b),
                     actual: val.clone(),
-                }, meta.clone())))
+                }, meta.clone())),
             }
         }
         
         _Pattern::Id { id, mutable } => {
-            Ok((Value::Nil, env.insert(id.to_string(), val.clone(), *mutable)))
+            Exec::Default(Value::Nil, env.insert(id.to_string(), val.clone(), *mutable))
         }
     }
 }

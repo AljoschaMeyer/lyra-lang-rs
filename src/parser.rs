@@ -129,7 +129,7 @@ impl<'a> Parser<'a> {
 
     // Checks whether the input starts with a (well-known) keyword.
     fn starts_with_a_kw(&mut self) -> bool {
-        // TODO update as keywords are added
+        // TODO update as keywords are implemented
         if self.input.starts_with("if") {
             return self.input.len() == 2 || !is_ident_byte(self.input.as_bytes()[2]);
         } else if self.input.starts_with("nil")
@@ -141,6 +141,8 @@ impl<'a> Parser<'a> {
         } else if self.input.starts_with("false")
         || self.input.starts_with("throw") {
             return self.input.len() == 5 || !is_ident_byte(self.input.as_bytes()[5]);
+        } else if self.input.starts_with("return") {
+            return self.input.len() == 6 || !is_ident_byte(self.input.as_bytes()[6]);
         } else {
             false
         }
@@ -386,6 +388,11 @@ impl<'a> Parser<'a> {
                         self.skip_str("throw");
                         self.skip_ws();
                         Ok(Statement(_Statement::Throw(self.p_exp()?), meta))
+                    } else if self.peek_kw("return") {
+                        let meta = self.meta();
+                        self.skip_str("return");
+                        self.skip_ws();
+                        Ok(Statement(_Statement::Return(self.p_exp()?), meta))
                     } else if self.peek_kw("mut") || self.peek_kw("else") { // use a function for non-statement keywords (also do this in p_exp for exp keywords?)
                         Err(ParseError::KwStmt)
                     } else {
@@ -424,6 +431,10 @@ impl<'a> Parser<'a> {
     // just semicolon-separated statements, no braces (use p_block for those)
     pub fn p_statements(&mut self) -> Result<Box<[Statement]>, ParseError> {
         let mut stmts = Vec::new();
+        
+        if self.end() {
+            return Ok(stmts.into_boxed_slice());
+        }
 
         loop {
             self.skip_ws();
