@@ -138,7 +138,8 @@ impl<'a> Parser<'a> {
         || self.input.starts_with("try") {
             return self.input.len() == 3 || !is_ident_byte(self.input.as_bytes()[3]);
         } else if self.input.starts_with("true")
-        || self.input.starts_with("case") {
+        || self.input.starts_with("case")
+        || self.input.starts_with("loop") {
             return self.input.len() == 4 || !is_ident_byte(self.input.as_bytes()[4]);
         } else if self.input.starts_with("false")
         || self.input.starts_with("throw")
@@ -358,6 +359,33 @@ impl<'a> Parser<'a> {
         
         return Ok(Expression(_Expression::Case(matchee, branches), meta));
     }
+    
+    fn p_loop(&mut self) -> Result<Expression, ParseError> {
+        let meta = self.meta();
+        if self.peek_kw("loop") { // TODO abstract this into a method
+            self.skip_str("loop");
+        } else {
+            return Err(ParseLoopError::NoLoopKw.into());
+        }
+        
+        self.skip_ws();
+        let matchee = Box::new(self.p_exp()?);
+        
+        self.skip_ws();
+        if !self.expect('{') {
+            return Err(ParseLoopError::NoLBrace.into());
+        }
+        
+        self.skip_ws();        
+        let branches = self.p_branches()?;
+        
+        self.skip_ws();        
+        if !self.expect('}') {
+            return Err(ParseLoopError::NoRBrace.into());
+        }
+        
+        return Ok(Expression(_Expression::Loop(matchee, branches), meta));
+    }
 
     // Non-leftrecursive expressions
     fn p_lexp(&mut self) -> Result<Expression, ParseError> {
@@ -379,6 +407,8 @@ impl<'a> Parser<'a> {
                         self.p_try()
                     } else if self.peek_kw("case") {
                         self.p_case()
+                    } else if self.peek_kw("loop") {
+                        self.p_loop()
                     } else {
                         Err(ParseError::KwExp)
                     }
@@ -720,6 +750,16 @@ pub enum ParseCaseError {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseLoopError {
+    #[fail(display = "expected loop expression, did not get the `loop` keyword")]
+    NoLoopKw,
+    #[fail(display = "expected left brace `{{` after the loop matchee")]
+    NoLBrace,
+    #[fail(display = "expected right brace `}}` to terminate the loop body")]
+    NoRBrace,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
 pub enum ParsePatternError {
     #[fail(display = "expected pattern, got end of input")]
     Empty,
@@ -787,6 +827,8 @@ pub enum ParseError {
     Try(#[fail(cause)]ParseTryError),
     #[fail(display = "erroneous case expression")]
     Case(#[fail(cause)]ParseCaseError),
+    #[fail(display = "erroneous loop expression")]
+    Loop(#[fail(cause)]ParseLoopError),
     #[fail(display = "erroneous branch")]
     Branch(#[fail(cause)]ParseBranchError),
     #[fail(display = "erroneous pattern")]
@@ -822,6 +864,12 @@ impl From<ParseTryError> for ParseError {
 impl From<ParseCaseError> for ParseError {
     fn from(err: ParseCaseError) -> ParseError {
         ParseError::Case(err)
+    }
+}
+
+impl From<ParseLoopError> for ParseError {
+    fn from(err: ParseLoopError) -> ParseError {
+        ParseError::Loop(err)
     }
 }
 

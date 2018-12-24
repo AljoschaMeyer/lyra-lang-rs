@@ -45,7 +45,7 @@ mod tests {
         assert_eq!(run("nil; nil").unwrap(), Value::Nil);
         assert_eq!(run("").unwrap(), Value::Nil);
     }
-
+    
     #[test]
     fn test_bool() {
         assert_eq!(run(" true").unwrap(), Value::Bool(true));
@@ -80,7 +80,7 @@ mod tests {
         assert_eq!(run("true && false").unwrap(), Value::Bool(false));
         assert_eq!(run("false && true").unwrap(), Value::Bool(false));
         assert_eq!(run("false && false").unwrap(), Value::Bool(false));
-        
+    
         // TODO uncomment when applications are implemented
         // assert_eq!(run("false && halt()").unwrap(), Value::Bool(false));
     }
@@ -91,7 +91,7 @@ mod tests {
         assert_eq!(run("true || false").unwrap(), Value::Bool(true));
         assert_eq!(run("false || true").unwrap(), Value::Bool(true));
         assert_eq!(run("false || false").unwrap(), Value::Bool(false));
-        
+    
         // TODO uncomment when applications are implemented
         // assert_eq!(run("true && halt()").unwrap(), Value::Bool(true));
     }
@@ -163,5 +163,12 @@ mod tests {
         assert_eq!(run("case true {true | nil => {true} _ => {}}").unwrap(), Value::Bool(true));
         assert_eq!(run("case nil {true | nil => {false} _ => {}}").unwrap(), Value::Bool(false));
         assert_eq!(run("case false {true | nil => {nil} _ => { false }}").unwrap(), Value::Bool(false));
+    }
+    
+    #[test]
+    fn test_loop() {
+        assert_eq!(run("loop true {}").unwrap(), Value::Nil);
+        assert_eq!(run("let mut x = true; loop x { nil => {x = false; true} true => {x = nil}}").unwrap(), Value::Bool(true));
+        assert_eq!(run("loop true { _ => { break true }}").unwrap(), Value::Bool(true));
     }
 }

@@ -268,6 +268,40 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                 Eval::Default(Value::Nil)
             })
         }
+        _Expression::Loop(ref matchee, ref branches) => {
+            let mut last_loop_val = Value::Nil;
+            'outer: loop {
+                match evaluate(matchee, &env) {
+                    Eval::Default(val) => {
+                        for (ref pats, ref body) in branches.iter() {
+                            match destructure_patterns(pats, &val, env.clone()) {
+                                None => {} // patterns did not match, just try the next branch
+                                Some(Exec::Error(e, r)) => return Eval::Error(e, r),
+                                Some(Exec::Return(val)) => return Eval::Return(val),
+                                Some(Exec::Break(val)) => return Eval::Default(val),
+                                Some(Exec::Default(_, inner_env)) => {
+                                    match exec_many(&mut body.iter(), inner_env) {
+                                        Exec::Default(val, _) => {
+                                            last_loop_val = val;
+                                            continue 'outer; // begin next iteration of the lyra loop
+                                        },
+                                        Exec::Error(e, r) => return Eval::Error(e, r),
+                                        Exec::Return(val) => return Eval::Return(val),
+                                        Exec::Break(val) => return Eval::Default(val),
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // No branch matched, the result of the previous loop run.
+                        return Eval::Default(last_loop_val);
+                    }
+                    Eval::Error(e, r) => return Eval::Error(e, r),
+                    Eval::Return(val) => return Eval::Return(val),
+                    Eval::Break(val) => return Eval::Break(val),
+                }
+            }
+        }
     }
 }
 
