@@ -35,7 +35,7 @@ mod tests {
     
     fn assert_syntax_err(src: &str) {
         let mut p = Parser::new(src, Source::other());
-        let program = p.p_statements().unwrap();
+        let program = p.p_program().unwrap();
         // TODO impl checks for unbound identifiers or assignment to immutable identifiers
         assert!(p.end());
     }
@@ -147,5 +147,21 @@ mod tests {
         assert_eq!(run("try { throw true; false } catch x { x }").unwrap(), Value::Bool(true));
         assert_eq!(run("try { throw true; false } catch false { false }").unwrap_err().0, Value::Bool(true));
         assert_eq!(run("try { let nil = false } catch _ { true }").unwrap(), Value::Bool(true));
+    }
+    
+    #[test]
+    fn test_case() {
+        assert_syntax_err("case nil { x | true => {}}");
+        assert_eq!(run("case true {}").unwrap(), Value::Nil);
+        assert_eq!(run("case true {_ => {true}}").unwrap(), Value::Bool(true));
+        assert_eq!(run("case true {true => {}}").unwrap(), Value::Nil);
+        assert_eq!(run("case true {true => {true}}").unwrap(), Value::Bool(true));
+        assert_eq!(run("case true {false => {true}}").unwrap(), Value::Nil);
+        assert_eq!(run("case false {true => {true} false => {false}}").unwrap(), Value::Bool(false));
+        assert_eq!(run("case true {x => {x}}").unwrap(), Value::Bool(true));
+        assert_eq!(run("case true {x if true => {x} _ => {false}}").unwrap(), Value::Bool(true));
+        assert_eq!(run("case true {true | nil => {true} _ => {}}").unwrap(), Value::Bool(true));
+        assert_eq!(run("case nil {true | nil => {false} _ => {}}").unwrap(), Value::Bool(false));
+        assert_eq!(run("case false {true | nil => {nil} _ => { false }}").unwrap(), Value::Bool(false));
     }
 }

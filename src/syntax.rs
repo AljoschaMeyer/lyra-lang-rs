@@ -57,8 +57,9 @@ pub enum _Expression {
     If(Box<Expression>, Box<[Statement]>, Option<Box<[Statement]>>),
     While(Box<Expression>, Box<[Statement]>),
     Try(Box<[Statement]>, Pattern, Box<[Statement]>),
+    Case(Box<Expression>, Box<[(Patterns, Box<[Statement]>)]>),
     
-    // operators, literals, application, case, for, map access, indexing
+    // operators, literals, application, case, loop, for, map access, indexing
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -89,3 +90,6 @@ pub enum _Pattern {
     Nil,
     Bool(bool),
 }
+
+#[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
+pub struct Patterns(pub Box<[Pattern]>, pub Option<Box<Expression>>, pub Meta); // optional exp is a guard condition

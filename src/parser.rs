@@ -137,7 +137,8 @@ impl<'a> Parser<'a> {
         || self.input.starts_with("let")
         || self.input.starts_with("try") {
             return self.input.len() == 3 || !is_ident_byte(self.input.as_bytes()[3]);
-        } else if self.input.starts_with("true") {
+        } else if self.input.starts_with("true")
+        || self.input.starts_with("case") {
             return self.input.len() == 4 || !is_ident_byte(self.input.as_bytes()[4]);
         } else if self.input.starts_with("false")
         || self.input.starts_with("throw")
@@ -330,6 +331,33 @@ impl<'a> Parser<'a> {
             },
         }
     }
+    
+    fn p_case(&mut self) -> Result<Expression, ParseError> {
+        let meta = self.meta();
+        if self.peek_kw("case") { // TODO abstract this into a method
+            self.skip_str("case");
+        } else {
+            return Err(ParseCaseError::NoCaseKw.into());
+        }
+        
+        self.skip_ws();
+        let matchee = Box::new(self.p_exp()?);
+        
+        self.skip_ws();
+        if !self.expect('{') {
+            return Err(ParseCaseError::NoLBrace.into());
+        }
+        
+        self.skip_ws();        
+        let branches = self.p_branches()?;
+        
+        self.skip_ws();        
+        if !self.expect('}') {
+            return Err(ParseCaseError::NoRBrace.into());
+        }
+        
+        return Ok(Expression(_Expression::Case(matchee, branches), meta));
+    }
 
     // Non-leftrecursive expressions
     fn p_lexp(&mut self) -> Result<Expression, ParseError> {
@@ -349,6 +377,8 @@ impl<'a> Parser<'a> {
                         self.p_while()
                     } else if self.peek_kw("try") {
                         self.p_try()
+                    } else if self.peek_kw("case") {
+                        self.p_case()
                     } else {
                         Err(ParseError::KwExp)
                     }
@@ -430,6 +460,74 @@ impl<'a> Parser<'a> {
                 }
             },
             Some(_) => Err(ParsePatternError::Leading),
+        }
+    }
+    
+    fn p_patterns(&mut self) -> Result<Patterns, ParseError> {
+        let meta = self.meta();
+        self.skip_ws();
+        let mut pats = Vec::new();
+        
+        loop {
+            self.skip_ws();
+            let pat = self.p_pattern()?;
+            pats.push(pat);
+            self.skip_ws();
+            
+            if self.input.starts_with("=>") {
+                return Ok(Patterns(pats.into_boxed_slice(), None, meta));
+            } else if self.skip_str("|") {
+                continue;
+            } else if self.peek_kw("if") {
+                self.skip_str("if");
+                self.skip_ws();
+                let guard = Box::new(self.p_exp()?);
+                return Ok(Patterns(pats.into_boxed_slice(), Some(guard), meta));
+            }
+        }
+    }
+    
+    fn p_branch(&mut self) -> Result<(Patterns, Box<[Statement]>), ParseError> {
+        self.skip_ws();
+        let patterns = self.p_patterns()?;
+        
+        self.skip_ws();
+        if !self.skip_str("=>") {
+            return Err(ParseBranchError::Arrow.into());
+        }
+        
+        self.skip_ws();
+        if !self.expect('{') {
+            return Err(ParseBranchError::NoLBrace.into());
+        }
+        
+        self.skip_ws();        
+        let body = self.p_statements()?;
+        
+        self.skip_ws();        
+        if !self.expect('}') {
+            return Err(ParseBranchError::NoRBrace.into());
+        }
+        
+        return Ok((patterns, body));
+    }
+    
+    // branches, terminated by a `}` (which is *not* consumed by this parser)
+    fn p_branches(&mut self) -> Result<Box<[(Patterns, Box<[Statement]>)]>, ParseError> {
+        let mut branches = Vec::new();
+        
+        self.skip_ws();
+        if let Some('}') = self.peek() {
+            return Ok(branches.into_boxed_slice());
+        }
+
+        loop {
+            self.skip_ws();
+            branches.push(self.p_branch()?);
+            self.skip_ws();
+            if let Some('}') = self.peek() {
+                return Ok(branches.into_boxed_slice());
+            }
         }
     }
     
@@ -533,7 +631,8 @@ impl<'a> Parser<'a> {
             self.skip_ws();
             match self.peek() {
                 Some(';') => self.skip(),
-                _ => return Ok(stmts.into_boxed_slice()),
+                Some('}') => return Ok(stmts.into_boxed_slice()),
+                _ => return Err(ParseError::StmtList),
             }
         }
     }
@@ -611,6 +710,16 @@ pub enum ParseTryError {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseCaseError {
+    #[fail(display = "expected case expression, did not get the `case` keyword")]
+    NoCaseKw,
+    #[fail(display = "expected left brace `{{` after the case matchee")]
+    NoLBrace,
+    #[fail(display = "expected right brace `}}` to terminate the case body")]
+    NoRBrace,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
 pub enum ParsePatternError {
     #[fail(display = "expected pattern, got end of input")]
     Empty,
@@ -626,6 +735,16 @@ impl From<ParseIdError> for ParsePatternError {
     fn from(err: ParseIdError) -> ParsePatternError {
         ParsePatternError::Id(err)
     }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseBranchError {
+    #[fail(display = "expected a `=>` arrow after the pattern(s)")]
+    Arrow,
+    #[fail(display = "expected left brace `{{` after the arrow")]
+    NoLBrace,
+    #[fail(display = "expected right brace `}}` to terminate the branch body")]
+    NoRBrace,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
@@ -656,6 +775,8 @@ pub enum ParseError {
     LeadingStmt,
     #[fail(display = "expected statement, got a keyword that does not start a statement")]
     KwStmt,
+    #[fail(display = "expected either a semicolon to continue the list of statements, or a right curly brace `}}` to terminate it")]
+    StmtList,
     #[fail(display = "erroneous identifier")]
     Id(#[fail(cause)]ParseIdError),
     #[fail(display = "erroneous if expression")]
@@ -664,6 +785,12 @@ pub enum ParseError {
     While(#[fail(cause)]ParseWhileError),
     #[fail(display = "erroneous try expression")]
     Try(#[fail(cause)]ParseTryError),
+    #[fail(display = "erroneous case expression")]
+    Case(#[fail(cause)]ParseCaseError),
+    #[fail(display = "erroneous branch")]
+    Branch(#[fail(cause)]ParseBranchError),
+    #[fail(display = "erroneous pattern")]
+    Pattern(#[fail(cause)]ParsePatternError),
     #[fail(display = "erroneous let statement")]
     Let(#[fail(cause)]ParseLetError),
 }
@@ -689,6 +816,24 @@ impl From<ParseWhileError> for ParseError {
 impl From<ParseTryError> for ParseError {
     fn from(err: ParseTryError) -> ParseError {
         ParseError::Try(err)
+    }
+}
+
+impl From<ParseCaseError> for ParseError {
+    fn from(err: ParseCaseError) -> ParseError {
+        ParseError::Case(err)
+    }
+}
+
+impl From<ParseBranchError> for ParseError {
+    fn from(err: ParseBranchError) -> ParseError {
+        ParseError::Branch(err)
+    }
+}
+
+impl From<ParsePatternError> for ParseError {
+    fn from(err: ParsePatternError) -> ParseError {
+        ParseError::Pattern(err)
     }
 }
 

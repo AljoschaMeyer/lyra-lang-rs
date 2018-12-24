@@ -2,7 +2,7 @@ use gc::{Gc, GcCell};
 use ref_thread_local::RefThreadLocal;
 
 use super::gc_foreign::OrdMap;
-use super::syntax::{Meta, Expression, _Expression, Statement, _Statement, Pattern, _Pattern};
+use super::syntax::{Meta, Expression, _Expression, Statement, _Statement, Pattern, _Pattern, Patterns};
 use super::builtins;
 
 /// Runtime representation of an arbitrary lyra value.
@@ -30,7 +30,9 @@ pub enum _Reason {
     Refuted {
         expected: RefutationKind,
         actual: Value
-    }
+    },
+    /// A value did not match a `Patterns` syntax thing.
+    PatternsNoMatch,
 }
 
 /// What a refutable pattern can expect.
@@ -251,6 +253,21 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                 }
             }
         }
+        _Expression::Case(ref exp, ref branches) => {
+            evaluate(exp, &env).and_then(|val| {
+                for (ref pats, ref body) in branches.iter() {
+                    match destructure_patterns(pats, &val, env.clone()) {
+                        None => {} // patterns did not match, just try the next branch
+                        Some(exec) => {
+                            return exec.and_then(|_, inner_env| exec_many(&mut body.iter(), inner_env)).into();
+                        }
+                    }
+                }
+                
+                // No branch matched, return Nil by default.
+                Eval::Default(Value::Nil)
+            })
+        }
     }
 }
 
@@ -341,4 +358,32 @@ pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) 
             Exec::Default(Value::Nil, env.insert(id.to_string(), val.clone(), *mutable))
         }
     }
+}
+
+/// Like `destructure`, but for `Patterns`. Returns `None` if nothing matched.
+pub fn destructure_patterns(Patterns(ref pats, ref guard, _): &Patterns, val: &Value, env: Environment) -> Option<Exec> {
+    for pat in pats.iter() {
+        if let Exec::Default(val, inner_env) = destructure(pat, val, env.clone()) {
+            match guard {
+                None => return Some(Exec::Default(val, inner_env)),
+                Some(ref guard_exp) => {
+                    match evaluate(guard_exp, &inner_env) {
+                        Eval::Default(guard_val) => {
+                            if truthy(&guard_val) {
+                                return Some(Exec::Default(val, inner_env));
+                            }
+                            // else just continue with the next pattern
+                        }
+                        Eval::Error(e, r) => return Some(Exec::Error(e, r)),
+                        Eval::Return(val) => return Some(Exec::Return(val)),
+                        Eval::Break(val) => return Some(Exec::Break(val)),
+                    }
+                }
+            }
+        }
+        // else we didn't match, just continue (destructure can't return or break, err just means no match)
+    }
+    
+    // No inner pattern matched.
+    return None;
 }

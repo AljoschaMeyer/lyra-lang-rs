@@ -2,7 +2,7 @@
 
 Lyra is a dynamically typed, imperative programming language. A distinct feature is the use of immutable values, even for compound data structures like arrays. Mutation only happens by assigning different values to variables, and aside from this feature, the language is functional. Values themselves do not change, except for the state of variables in the captured environment of a closure.
 
-The built-in values are a nil value, booleans, arbitrary-size rational numbers (but no floats), characters (unicode scalar values), unicode strings, byte strings, ordered sequences, sets, maps, and first-class functions (or lexically scoped closures to be more precise). Finally there are futures, which provide the interface to the event loop used for nonblocking operations in the otherwise single-threaded execution.
+The built-in values are a nil value, booleans, arbitrary-size rational numbers (but no floats), characters (unicode scalar values), unicode strings, byte strings, ordered sequences, sets, maps, and first-class functions (to be precise: lexically scoped closures with tail-call optimization). Finally there are futures, which provide the interface to the event loop used for nonblocking operations in the otherwise single-threaded execution.
 
 The data types have been chosen to satisfy useful algebraic or algorithmic properties, among them:
 
@@ -23,7 +23,7 @@ Beyond these design decisions, lyra is mostly unopinionated. The language itself
 
 There's one final peculiarity about lyra: It's definition is static. Lyra isn't versioned, there won't be any feature additions, there won't be any changes to the specification. If anyone (including the original author) wants to "fix" something, or add new things, they will have to fork. The new language won't be lyra.
 
-Though many languages influenced the design of lyra, the two most direct influences are clojure and javascript. Some good (but still imprecise) approximations of lyra are:
+Though many languages influenced the design of lyra, the two most direct influences are clojure and javascript (although spiritually it might be closest to lua). Some good (but still imprecise) approximations of lyra are:
 
 - clojure, but with an event loop, syntax, and more lenient about mutable state
 - javascript, but with immutable values, no object-orientation, and lazy, cancellable futures rather than callbacks
