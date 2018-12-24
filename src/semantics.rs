@@ -235,6 +235,22 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                 }
             }
         }
+        _Expression::Try(ref try_body, ref catch_pat, ref catch_body) => {
+            match exec_many(&mut try_body.iter(), env.clone()).into() {
+                Eval::Default(val) => return Eval::Default(val),
+                Eval::Return(val) => return Eval::Return(val),
+                Eval::Break(val) => return Eval::Default(val),
+                Eval::Error(e, r) => {
+                    match destructure(catch_pat, &e, env.clone()) {
+                        Exec::Default(_, inner_env) => {
+                            return exec_many(&mut catch_body.iter(), inner_env).into();
+                        },
+                        Exec::Error(_, _) => return Eval::Error(e, r),
+                        _ => unreachable!(), // destructure can't return or break
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -297,8 +313,6 @@ pub fn exec_many<'i, I>(stmts: &'i mut I, mut env: Environment) -> Exec
 }
 
 /// Returns a new environment, adding bindings by destructuring the value according to the pattern.
-///
-/// `Err` if the pattern is refuted, `Ok(Value::Nil)` otherwise.
 pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) -> Exec {
     match pat {
         _Pattern::Blank => Exec::Default(Value::Nil, env),

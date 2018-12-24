@@ -134,14 +134,16 @@ impl<'a> Parser<'a> {
             return self.input.len() == 2 || !is_ident_byte(self.input.as_bytes()[2]);
         } else if self.input.starts_with("nil")
         || self.input.starts_with("mut")
-        || self.input.starts_with("let") {
+        || self.input.starts_with("let")
+        || self.input.starts_with("try") {
             return self.input.len() == 3 || !is_ident_byte(self.input.as_bytes()[3]);
         } else if self.input.starts_with("true") {
             return self.input.len() == 4 || !is_ident_byte(self.input.as_bytes()[4]);
         } else if self.input.starts_with("false")
         || self.input.starts_with("throw")
         || self.input.starts_with("break")
-        || self.input.starts_with("while") {
+        || self.input.starts_with("while")
+        || self.input.starts_with("catch") {
             return self.input.len() == 5 || !is_ident_byte(self.input.as_bytes()[5]);
         } else if self.input.starts_with("return") {
             return self.input.len() == 6 || !is_ident_byte(self.input.as_bytes()[6]);
@@ -278,6 +280,56 @@ impl<'a> Parser<'a> {
         
         return Ok(Expression(_Expression::While(cond, body), meta));
     }
+    
+    fn p_try(&mut self) -> Result<Expression, ParseError> {
+        let meta = self.meta();
+        if self.peek_kw("try") { // TODO abstract this into a method
+            self.skip_str("try");
+        } else {
+            return Err(ParseTryError::NoTryKw.into());
+        }
+        
+        self.skip_ws();
+        if !self.expect('{') {
+            return Err(ParseTryError::NoLBraceTry.into());
+        }
+        
+        self.skip_ws();        
+        let try_body = self.p_statements()?;
+        
+        self.skip_ws();        
+        if !self.expect('}') {
+            return Err(ParseTryError::NoRBraceTry.into());
+        }
+        
+        self.skip_ws();
+        if self.peek_kw("catch") { // TODO abstract this into a method
+            self.skip_str("catch");
+        } else {
+            return Err(ParseTryError::NoCatchKw.into());
+        }
+        
+        self.skip_ws();
+        match self.p_pattern() {
+            Err(err) => return Err(ParseTryError::Pattern(err).into()),
+            Ok(pat) => {
+                self.skip_ws();
+                if !self.expect('{') {
+                    return Err(ParseTryError::NoLBraceCatch.into());
+                }
+                
+                self.skip_ws();        
+                let catch_body = self.p_statements()?;
+                
+                self.skip_ws();        
+                if !self.expect('}') {
+                    return Err(ParseTryError::NoRBraceCatch.into());
+                }    
+                
+                return Ok(Expression(_Expression::Try(try_body, pat, catch_body), meta));
+            },
+        }
+    }
 
     // Non-leftrecursive expressions
     fn p_lexp(&mut self) -> Result<Expression, ParseError> {
@@ -295,6 +347,8 @@ impl<'a> Parser<'a> {
                         self.p_if()
                     } else if self.peek_kw("while") {
                         self.p_while()
+                    } else if self.peek_kw("try") {
+                        self.p_try()
                     } else {
                         Err(ParseError::KwExp)
                     }
@@ -520,11 +574,11 @@ pub enum ParseIfError {
     NoIfKw,
     #[fail(display = "expected left brace `{{` after the if condition")]
     NoLBraceThen,
-    #[fail(display = "expected right brace `}}` after the then branch")]
+    #[fail(display = "expected right brace `}}` to terminate the then branch")]
     NoRBraceThen,
     #[fail(display = "expected left brace `{{` after the `else` keyword")]
     NoLBraceElse,
-    #[fail(display = "expected right brace `}}` after the else branch")]
+    #[fail(display = "expected right brace `}}` to terminate the else branch")]
     NoRBraceElse,
 }
 
@@ -534,8 +588,26 @@ pub enum ParseWhileError {
     NoWhileKw,
     #[fail(display = "expected left brace `{{` after the while condition")]
     NoLBrace,
-    #[fail(display = "expected right brace `}}` after the while loop body")]
+    #[fail(display = "expected right brace `}}` to terminate the while loop body")]
     NoRBrace,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseTryError {
+    #[fail(display = "expected try expression, did not get the `try` keyword")]
+    NoTryKw,
+    #[fail(display = "expected left brace `{{` after the try keyword")]
+    NoLBraceTry,
+    #[fail(display = "expected right brace `}}` to terminate the try body")]
+    NoRBraceTry,
+    #[fail(display = "expected catch block, did not get the `catch` keyword")]
+    NoCatchKw,
+    #[fail(display = "expected left brace `{{` after the catch pattern")]
+    NoLBraceCatch,
+    #[fail(display = "expected right brace `}}` to terminate the catch body")]
+    NoRBraceCatch,
+    #[fail(display = "invalid catch pattern")]
+    Pattern(#[fail(cause)]ParsePatternError),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
@@ -590,6 +662,8 @@ pub enum ParseError {
     If(#[fail(cause)]ParseIfError),
     #[fail(display = "erroneous while expression")]
     While(#[fail(cause)]ParseWhileError),
+    #[fail(display = "erroneous try expression")]
+    Try(#[fail(cause)]ParseTryError),
     #[fail(display = "erroneous let statement")]
     Let(#[fail(cause)]ParseLetError),
 }
@@ -609,6 +683,12 @@ impl From<ParseIfError> for ParseError {
 impl From<ParseWhileError> for ParseError {
     fn from(err: ParseWhileError) -> ParseError {
         ParseError::While(err)
+    }
+}
+
+impl From<ParseTryError> for ParseError {
+    fn from(err: ParseTryError) -> ParseError {
+        ParseError::Try(err)
     }
 }
 

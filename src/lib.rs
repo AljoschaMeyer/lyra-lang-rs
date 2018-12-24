@@ -139,4 +139,13 @@ mod tests {
         assert_eq!(run("while true { break false }").unwrap(), Value::Bool(false));
         assert_eq!(run("while true { break false }; true").unwrap(), Value::Bool(true));
     }
+    
+    #[test]
+    fn test_try() {
+        assert_eq!(run("try {} catch _ {}").unwrap(), Value::Nil);
+        assert_eq!(run("try { true } catch _ {}").unwrap(), Value::Bool(true));
+        assert_eq!(run("try { throw true; false } catch x { x }").unwrap(), Value::Bool(true));
+        assert_eq!(run("try { throw true; false } catch false { false }").unwrap_err().0, Value::Bool(true));
+        assert_eq!(run("try { let nil = false } catch _ { true }").unwrap(), Value::Bool(true));
+    }
 }
