@@ -10,6 +10,7 @@ use super::builtins;
 pub enum Value {
     Nil,
     Bool(bool),
+    Fun(_Fun)
     // Fun {
     //     env: GcCell<Environment>, // interior mutability to enable recursive functions
     //     #[unsafe_ignore_trace]
@@ -17,6 +18,13 @@ pub enum Value {
     //     #[unsafe_ignore_trace]
     //     body: Box<[Statement]>,
     // }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Trace, Finalize)]
+pub enum _Fun {
+    Native0(fn() -> Result<Value, (Value, _Reason)>),
+    Native1(fn(Value) -> Result<Value, (Value, _Reason)>),
+    Native2(fn(Value, Value) -> Result<Value, (Value, _Reason)>),
 }
 
 /// Metadata about an exception. Not accessible to the program itself, only used for helpful
@@ -57,7 +65,7 @@ pub struct Environment(OrdMap<String, Binding>);
 impl Environment {
     /// Return the starting environment for a new program run.
     pub fn toplevel() -> Environment {
-        Environment::empty() // TODO actually implement this
+        builtins::TOPLEVEL.borrow().clone()
     }
 
     /// Return an empty environment.
@@ -305,7 +313,19 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
             match evaluate(fun, &env) {
                 Eval::Default(fun_val) => {
                     match fun_val {
-                        // TODO handle functions differently
+                        Value::Fun(_Fun::Native0(f)) => {
+                            match f() {
+                                Ok(ret) => return Eval::Default(ret),
+                                Err((e, r)) => return Eval::Error(e, Reason(r, fun.1.clone())),
+                            }
+                        }
+                        Value::Fun(_Fun::Native1(f)) => {
+                            unimplemented!()
+                        }
+                        Value::Fun(_Fun::Native2(f)) => {
+                            unimplemented!()
+                        }
+                        // TODO impl non-native funs
                         _ => return Eval::Error(builtins::ERR_REFUTED_NIL.borrow().clone(), Reason(_Reason::NonFunApplication(fun_val), exp.1.clone())),
                     }
                 }

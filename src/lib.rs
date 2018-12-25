@@ -167,4 +167,10 @@ mod tests {
         assert_eq!(run("let mut x = true; loop x { nil => {x = false; true} true => {x = nil}}").unwrap(), Value::Bool(true));
         assert_eq!(run("loop true { _ => { break true }}").unwrap(), Value::Bool(true));
     }
+    
+    #[test]
+    #[should_panic(expected = "called the halt built-in function")]
+    fn test_halt() {
+        run("halt()");
+    }
 }
