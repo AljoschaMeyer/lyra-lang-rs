@@ -22,7 +22,7 @@ ref_thread_local! {
     pub static managed BOOL_AND: Value = Value::Fun(_Fun::Native2(bool_and));
     pub static managed BOOL_OR: Value = Value::Fun(_Fun::Native2(bool_or));
     pub static managed BOOL_IMPLY: Value = Value::Fun(_Fun::Native2(bool_imply));
-    pub static managed BOOL_EQUIVALENT: Value = Value::Fun(_Fun::Native2(bool_eq));
+    pub static managed BOOL_EQUIVALENT: Value = Value::Fun(_Fun::Native2(bool_equivalent));
     pub static managed BOOL_XOR: Value = Value::Fun(_Fun::Native2(bool_xor));
     
     pub static managed TOPLEVEL: Environment = {
