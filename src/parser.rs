@@ -439,7 +439,17 @@ impl<'a> Parser<'a> {
         let meta = left.1.clone();
         self.skip_ws();
         
-        if self.skip_str("&&") {
+        if self.skip_str("(") {
+            self.skip_ws();
+            let args = self.p_exps()?;
+            
+            self.skip_ws();        
+            if !self.expect(')') {
+                return Err(ParseError::RParenApplication);
+            }
+            
+            return Ok(Expression(_Expression::Application(Box::new(left), args), meta));            
+        } else if self.skip_str("&&") {
             self.skip_ws();
             let rhs = Box::new(self.p_exp()?);
             Ok(Expression(_Expression::Land(Box::new(left), rhs), meta))
@@ -449,6 +459,27 @@ impl<'a> Parser<'a> {
             Ok(Expression(_Expression::Lor(Box::new(left), rhs), meta))
         } else {
             Ok(left)
+        }
+    }
+    
+    // semicolon-separated expressions, terminated by a `)` (which is *not* consumed by this parser)
+    pub fn p_exps(&mut self) -> Result<Box<[Expression]>, ParseError> {
+        let mut exps = Vec::new();
+        
+        self.skip_ws();
+        if let Some(')') = self.peek() {
+            return Ok(exps.into_boxed_slice());
+        }
+
+        loop {
+            self.skip_ws();
+            exps.push(self.p_exp()?);
+            self.skip_ws();
+            match self.peek() {
+                Some(',') => self.skip(),
+                Some(')') => return Ok(exps.into_boxed_slice()),
+                _ => return Err(ParseError::ExpList),
+            }
         }
     }
     
@@ -803,6 +834,8 @@ pub enum ParseLetError {
 pub enum ParseError {
     #[fail(display = "expected a right parentheses `)` to close a left parentheses")]
     RParen,
+    #[fail(display = "expected a right parentheses `)` to terminate the function application")]
+    RParenApplication,
     #[fail(display = "expected expression, got end of input")]
     EmptyExp,
     #[fail(display = "expected expression, got invalid first character")]
@@ -817,6 +850,8 @@ pub enum ParseError {
     KwStmt,
     #[fail(display = "expected either a semicolon to continue the list of statements, or a right curly brace `}}` to terminate it")]
     StmtList,
+    #[fail(display = "expected either a comma to continue the list of expressions, or a right paren `)` to terminate it")]
+    ExpList,
     #[fail(display = "erroneous identifier")]
     Id(#[fail(cause)]ParseIdError),
     #[fail(display = "erroneous if expression")]

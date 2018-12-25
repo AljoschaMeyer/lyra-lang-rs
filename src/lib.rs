@@ -80,9 +80,7 @@ mod tests {
         assert_eq!(run("true && false").unwrap(), Value::Bool(false));
         assert_eq!(run("false && true").unwrap(), Value::Bool(false));
         assert_eq!(run("false && false").unwrap(), Value::Bool(false));
-    
-        // TODO uncomment when applications are implemented
-        // assert_eq!(run("false && halt()").unwrap(), Value::Bool(false));
+        assert_eq!(run("false && halt()").unwrap(), Value::Bool(false));
     }
     
     #[test]
@@ -91,9 +89,7 @@ mod tests {
         assert_eq!(run("true || false").unwrap(), Value::Bool(true));
         assert_eq!(run("false || true").unwrap(), Value::Bool(true));
         assert_eq!(run("false || false").unwrap(), Value::Bool(false));
-    
-        // TODO uncomment when applications are implemented
-        // assert_eq!(run("true && halt()").unwrap(), Value::Bool(true));
+        assert_eq!(run("true || halt()").unwrap(), Value::Bool(true));
     }
     
     #[test]
@@ -106,10 +102,10 @@ mod tests {
     #[test]
     fn test_if() {
         assert_eq!(run("if true { true }").unwrap(), Value::Bool(true));
-        // assert_eq!(run("if true { true } else { halt() }").unwrap(), Value::Bool(true)); // TODO uncomment when applications are implemented
+        assert_eq!(run("if true { true } else { halt() }").unwrap(), Value::Bool(true));
         assert_eq!(run("if false { false } else { true }").unwrap(), Value::Bool(true));
         assert_eq!(run("if true {} else { true }").unwrap(), Value::Nil);
-        // assert_eq!(run("if false { halt() } else { true }").unwrap(), Value::Bool(true)); // TODO uncomment when applications are implemented
+        assert_eq!(run("if false { halt() } else { true }").unwrap(), Value::Bool(true));
         assert_eq!(run("if false { true }").unwrap(), Value::Nil);
         assert_eq!(run("if nil { true }").unwrap(), Value::Nil);
     }

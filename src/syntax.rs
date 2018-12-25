@@ -59,8 +59,9 @@ pub enum _Expression {
     Try(Box<[Statement]>, Pattern, Box<[Statement]>),
     Case(Box<Expression>, Box<[(Patterns, Box<[Statement]>)]>),
     Loop(Box<Expression>, Box<[(Patterns, Box<[Statement]>)]>),
+    Application(Box<Expression>, Box<[Expression]>),
     
-    // operators, literals, application, for, map access, indexing
+    // operators, literals, for, map access, indexing
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]

@@ -302,6 +302,18 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                 }
             }
         }
+        _Expression::Application(ref fun, ref args) => {
+            match evaluate(fun, &env) {
+                Eval::Default(fun_val) => {
+                    match fun_val {
+                        // TODO handle functions differently
+                        _ => unimplemented!(),
+                    }
+                }
+                Eval::Error(e, r) => return Eval::Error(e, r),
+                _ => unreachable!() // Functions either return a value via Eval::Default or they throw
+            }
+        }
     }
 }
 
