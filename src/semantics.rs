@@ -31,8 +31,7 @@ pub enum _Reason {
         expected: RefutationKind,
         actual: Value
     },
-    /// A value did not match a `Patterns` syntax thing.
-    PatternsNoMatch,
+    NonFunApplication(Value),
 }
 
 /// What a refutable pattern can expect.
@@ -307,7 +306,7 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                 Eval::Default(fun_val) => {
                     match fun_val {
                         // TODO handle functions differently
-                        _ => unimplemented!(),
+                        _ => return Eval::Error(builtins::ERR_REFUTED_NIL.borrow().clone(), Reason(_Reason::NonFunApplication(fun_val), exp.1.clone())),
                     }
                 }
                 Eval::Error(e, r) => return Eval::Error(e, r),
