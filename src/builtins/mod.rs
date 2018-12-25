@@ -22,7 +22,7 @@ ref_thread_local! {
     pub static managed BOOL_AND: Value = Value::Fun(_Fun::Native2(bool_and));
     pub static managed BOOL_OR: Value = Value::Fun(_Fun::Native2(bool_or));
     pub static managed BOOL_IMPLY: Value = Value::Fun(_Fun::Native2(bool_imply));
-    pub static managed BOOL_EQ: Value = Value::Fun(_Fun::Native2(bool_eq));
+    pub static managed BOOL_EQUIVALENT: Value = Value::Fun(_Fun::Native2(bool_eq));
     pub static managed BOOL_XOR: Value = Value::Fun(_Fun::Native2(bool_xor));
     
     pub static managed TOPLEVEL: Environment = {
@@ -42,7 +42,7 @@ ref_thread_local! {
         env = env.insert("bool_and".to_string(), BOOL_AND.borrow().clone(), false);
         env = env.insert("bool_or".to_string(), BOOL_OR.borrow().clone(), false);
         env = env.insert("bool_imply".to_string(), BOOL_IMPLY.borrow().clone(), false);
-        env = env.insert("bool_eq".to_string(), BOOL_EQ.borrow().clone(), false);
+        env = env.insert("bool_equivalent".to_string(), BOOL_EQUIVALENT.borrow().clone(), false);
         env = env.insert("bool_xor".to_string(), BOOL_XOR.borrow().clone(), false);
         
         env

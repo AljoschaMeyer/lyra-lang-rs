@@ -69,19 +69,19 @@ pub fn bool_imply(a: Value, b: Value) -> Result<Value, (Value, _Reason)> {
     }
 }
 
-pub fn bool_eq(a: Value, b: Value) -> Result<Value, (Value, _Reason)> {
+pub fn bool_equivalent(a: Value, b: Value) -> Result<Value, (Value, _Reason)> {
     match (a.clone(), b.clone()) {
         (Value::Bool(b0), Value::Bool(b1)) => Ok(Value::Bool(b0 == b1)),
         (Value::Bool(..), _) => Err((ERR_TYPE.borrow().clone(), _Reason::TypeError {
             expected: "bool",
             got: b.clone(),
-            name: "bool_eq",
+            name: "bool_equivalent",
             index: 1,
         })),
         _ => Err((ERR_TYPE.borrow().clone(), _Reason::TypeError {
             expected: "bool",
             got: a.clone(),
-            name: "bool_eq",
+            name: "bool_equivalent",
             index: 0,
         })),
     }
