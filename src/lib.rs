@@ -169,7 +169,7 @@ mod tests {
     }
     
     #[test]
-    #[should_panic(expected = "called the halt built-in function")]
+    #[should_panic(expected = "called the built-in `halt` function")]
     fn test_halt() {
         run("halt()");
     }

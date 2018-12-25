@@ -40,6 +40,12 @@ pub enum _Reason {
         actual: Value
     },
     NonFunApplication(Value),
+    TypeError {
+        expected: &'static str,
+        got: Value,
+        name: &'static str,
+        index: usize,
+    }
 }
 
 /// What a refutable pattern can expect.
@@ -105,7 +111,7 @@ impl Environment {
     }
 }
 
-fn truthy(val: &Value) -> bool {
+pub fn truthy(val: &Value) -> bool {
     match val {
         Value::Nil | Value::Bool(false) => false,
         _ => true,
@@ -320,10 +326,22 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                             }
                         }
                         Value::Fun(_Fun::Native1(f)) => {
-                            unimplemented!()
+                            eval_at_or_nil(args, 0, env).and_then(|arg0| {
+                                match f(arg0) {
+                                    Ok(ret) => return Eval::Default(ret),
+                                    Err((e, r)) => return Eval::Error(e, Reason(r, fun.1.clone())),
+                                }
+                            })
                         }
                         Value::Fun(_Fun::Native2(f)) => {
-                            unimplemented!()
+                            eval_at_or_nil(args, 0, env).and_then(|arg0| {
+                                eval_at_or_nil(args, 1, env).and_then(|arg1| {
+                                    match f(arg0, arg1) {
+                                        Ok(ret) => return Eval::Default(ret),
+                                        Err((e, r)) => return Eval::Error(e, Reason(r, fun.1.clone())),
+                                    }
+                                })
+                            })
                         }
                         // TODO impl non-native funs
                         _ => return Eval::Error(builtins::ERR_REFUTED_NIL.borrow().clone(), Reason(_Reason::NonFunApplication(fun_val), exp.1.clone())),
@@ -332,6 +350,15 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                 Eval::Error(e, r) => return Eval::Error(e, r),
                 _ => unreachable!() // Functions either return a value via Eval::Default or they throw
             }
+        }
+    }
+}
+
+fn eval_at_or_nil(exps: &Box<[Expression]>, index: usize, env: &Environment) -> Eval {
+    match exps.get(index) {
+        None => return Eval::Default(Value::Nil),
+        Some(ref exp) => {
+            return evaluate(exp, &env);
         }
     }
 }
