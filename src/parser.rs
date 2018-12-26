@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use super::syntax::*;
 
 pub struct Parser<'a> {
@@ -418,26 +420,94 @@ impl<'a> Parser<'a> {
                 }
             },
             Some('(') => {
+                // This parser code is already a horrible mess, so I'm going to be lazy and
+                // implement the distinction between a function literal and parens for
+                // associativity via backtracking...
+                //
+                // First try to parse as associativity parens, if that fails or they are succeeded
+                // by an arror `->`, swallow the error (if any) and backtrack to parse as a
+                // function literal instead.
+                let meta = self.meta();
                 self.skip();
                 self.skip_ws();
                 
-                let exp = self.p_exp()?;
+                let backtrack_input = self.input;
+                if let Ok(yay) = self.p_parens() {
+                    self.skip_ws();
+                    if !self.input.starts_with("->") {
+                        return Ok(yay);
+                    }
+                }
+                
+                self.input = backtrack_input;
+                let args = self.p_fun_args()?;
                 
                 self.skip_ws();
-                if self.expect(')') {
-                    return Ok(exp);
-                } else {
-                    Err(ParseError::RParen)
+                if !self.skip_str("->") {
+                    return Err(ParseFunError::Arrow.into());
                 }
+                
+                self.skip_ws();
+                if !self.expect('{') {
+                    return Err(ParseFunError::NoLBrace.into());
+                }
+                
+                self.skip_ws();        
+                let body = Rc::new(self.p_statements()?);
+                
+                self.skip_ws();        
+                if !self.expect('}') {
+                    return Err(ParseFunError::NoRBrace.into());
+                }
+                
+                return Ok(Expression(_Expression::Fun(args, body), meta));
             }
             Some(_) => Err(ParseError::LeadingExp),
+        }
+    }
+    
+    // Parens for associativity. Expects the opening paren to have been consumed already (as well
+    // as the whitespace succeeding it).
+    fn p_parens(&mut self) -> Result<Expression, ParseError> {
+        let exp = self.p_exp()?;
+        
+        self.skip_ws();
+        if self.expect(')') {
+            return Ok(exp);
+        } else {
+            Err(ParseError::RParen)
+        }
+    }
+    
+    // Expects the opening paren and its succeeding whitepace to have been consumed already.
+    // Consumes the closing paren.
+    fn p_fun_args(&mut self) -> Result<Box<[Pattern]>, ParseFunError> {
+        let mut args = Vec::new();
+        
+        self.skip_ws();
+        if let Some(')') = self.peek() {
+            return Ok(args.into_boxed_slice());
+        }
+
+        loop {
+            self.skip_ws();
+            args.push(self.p_pattern()?);
+            self.skip_ws();
+            match self.peek() {
+                Some(',') => self.skip(),
+                Some(')') => {
+                    self.skip();
+                    return Ok(args.into_boxed_slice());
+                },
+                _ => return Err(ParseFunError::ArgsList),
+            }
         }
     }
 
     pub fn p_exp(&mut self) -> Result<Expression, ParseError> {
         let left = self.p_lexp()?;
-        let meta = left.1.clone();
         self.skip_ws();
+        let meta = self.meta();
         
         if self.skip_str("(") {
             self.skip_ws();
@@ -535,7 +605,7 @@ impl<'a> Parser<'a> {
             pats.push(pat);
             self.skip_ws();
             
-            if self.input.starts_with("=>") {
+            if self.input.starts_with("->") {
                 return Ok(Patterns(pats.into_boxed_slice(), None, meta));
             } else if self.skip_str("|") {
                 continue;
@@ -553,7 +623,7 @@ impl<'a> Parser<'a> {
         let patterns = self.p_patterns()?;
         
         self.skip_ws();
-        if !self.skip_str("=>") {
+        if !self.skip_str("->") {
             return Err(ParseBranchError::Arrow.into());
         }
         
@@ -791,6 +861,26 @@ pub enum ParseLoopError {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseFunError {
+    #[fail(display = "expected either a comma to continue the list of argument patterns, or a right paren `)` to terminate it")]
+    ArgsList,
+    #[fail(display = "expected a `->` arrow after the argument list")]
+    Arrow,
+    #[fail(display = "expected left brace `{{` after the function literal's arrow")]
+    NoLBrace,
+    #[fail(display = "expected right brace `}}` to terminate the function body")]
+    NoRBrace,
+    #[fail(display = "erroneous argument pattern")]
+    Pattern(#[fail(cause)]ParsePatternError),
+}
+
+impl From<ParsePatternError> for ParseFunError {
+    fn from(err: ParsePatternError) -> ParseFunError {
+        ParseFunError::Pattern(err)
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
 pub enum ParsePatternError {
     #[fail(display = "expected pattern, got end of input")]
     Empty,
@@ -810,7 +900,7 @@ impl From<ParseIdError> for ParsePatternError {
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
 pub enum ParseBranchError {
-    #[fail(display = "expected a `=>` arrow after the pattern(s)")]
+    #[fail(display = "expected a `->` arrow after the pattern(s)")]
     Arrow,
     #[fail(display = "expected left brace `{{` after the arrow")]
     NoLBrace,
@@ -864,6 +954,8 @@ pub enum ParseError {
     Case(#[fail(cause)]ParseCaseError),
     #[fail(display = "erroneous loop expression")]
     Loop(#[fail(cause)]ParseLoopError),
+    #[fail(display = "erroneous function literal")]
+    Fun(#[fail(cause)]ParseFunError),
     #[fail(display = "erroneous branch")]
     Branch(#[fail(cause)]ParseBranchError),
     #[fail(display = "erroneous pattern")]
@@ -905,6 +997,12 @@ impl From<ParseCaseError> for ParseError {
 impl From<ParseLoopError> for ParseError {
     fn from(err: ParseLoopError) -> ParseError {
         ParseError::Loop(err)
+    }
+}
+
+impl From<ParseFunError> for ParseError {
+    fn from(err: ParseFunError) -> ParseError {
+        ParseError::Fun(err)
     }
 }
 

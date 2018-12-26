@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use gc::{Gc, GcCell};
 use ref_thread_local::RefThreadLocal;
 
@@ -11,17 +13,17 @@ pub enum Value {
     Nil,
     Bool(bool),
     Fun(_Fun)
-    // Fun {
-    //     env: GcCell<Environment>, // interior mutability to enable recursive functions
-    //     #[unsafe_ignore_trace]
-    //     args: Box<[Pattern]>,
-    //     #[unsafe_ignore_trace]
-    //     body: Box<[Statement]>,
-    // }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Trace, Finalize)]
 pub enum _Fun {
+    Lyra {
+        env: GcCell<Environment>, // interior mutability to enable recursive functions
+        #[unsafe_ignore_trace]
+        args: Box<[Pattern]>,
+        #[unsafe_ignore_trace]
+        body: Rc<Box<[Statement]>>,
+    },
     Native0(fn() -> Result<Value, (Value, _Reason)>),
     Native1(fn(Value) -> Result<Value, (Value, _Reason)>),
     Native2(fn(Value, Value) -> Result<Value, (Value, _Reason)>),
@@ -316,9 +318,43 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
             }
         }
         _Expression::Application(ref fun, ref args) => {
+            // Evaluate all arguments
+            let mut arg_vals = Vec::new();
+            loop {
+                match args.get(arg_vals.len()) {
+                    None => break,
+                    Some(arg_exp) => {
+                        match evaluate(arg_exp, env) {
+                            Eval::Default(evaluated_arg) => arg_vals.push(evaluated_arg),
+                            Eval::Error(e, r) => return Eval::Error(e, r),
+                            Eval::Break(val) => return Eval::Break(val),
+                            Eval::Return(val) => return Eval::Return(val),
+                        }
+                    }
+                }
+            }
+            
             match evaluate(fun, &env) {
-                Eval::Default(fun_val) => {
+                Eval::Default(fun_val) => {                    
                     match fun_val {
+                        Value::Fun(_Fun::Lyra { ref env, args: ref arg_patterns, ref body }) => {
+                            let closed_env = env.borrow();
+                            
+                            let mut inner_env = closed_env.clone();
+                            for (i, pat) in arg_patterns.iter().enumerate() {
+                                inner_env = match destructure(
+                                    pat,
+                                    arg_vals.get(i).unwrap_or(&Value::Nil),
+                                    inner_env.clone()
+                                ) {
+                                    Exec::Default(_, new_env) => new_env,
+                                    Exec::Error(e, r) => return Eval::Error(e, r),
+                                    _ => unreachable!(), // destructure can't return or break
+                                };
+                            }
+                            
+                            return exec_many(&mut body.iter(), inner_env).into()
+                        }
                         Value::Fun(_Fun::Native0(f)) => {
                             match f() {
                                 Ok(ret) => return Eval::Default(ret),
@@ -326,39 +362,33 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                             }
                         }
                         Value::Fun(_Fun::Native1(f)) => {
-                            eval_at_or_nil(args, 0, env).and_then(|arg0| {
-                                match f(arg0) {
-                                    Ok(ret) => return Eval::Default(ret),
-                                    Err((e, r)) => return Eval::Error(e, Reason(r, fun.1.clone())),
-                                }
-                            })
+                            match f(arg_vals.get(0).unwrap_or(&Value::Nil).clone()) {
+                                Ok(ret) => return Eval::Default(ret),
+                                Err((e, r)) => return Eval::Error(e, Reason(r, fun.1.clone())),
+                            }
                         }
                         Value::Fun(_Fun::Native2(f)) => {
-                            eval_at_or_nil(args, 0, env).and_then(|arg0| {
-                                eval_at_or_nil(args, 1, env).and_then(|arg1| {
-                                    match f(arg0, arg1) {
-                                        Ok(ret) => return Eval::Default(ret),
-                                        Err((e, r)) => return Eval::Error(e, Reason(r, fun.1.clone())),
-                                    }
-                                })
-                            })
+                            match f(
+                                arg_vals.get(0).unwrap_or(&Value::Nil).clone(),
+                                arg_vals.get(1).unwrap_or(&Value::Nil).clone()
+                            ) {
+                                Ok(ret) => return Eval::Default(ret),
+                                Err((e, r)) => return Eval::Error(e, Reason(r, fun.1.clone())),
+                            }
                         }
-                        // TODO impl non-native funs
-                        _ => return Eval::Error(builtins::ERR_REFUTED_NIL.borrow().clone(), Reason(_Reason::NonFunApplication(fun_val), exp.1.clone())),
+                        _ => return Eval::Error(builtins::ERR_NOT_A_FUNCTION.borrow().clone(), Reason(_Reason::NonFunApplication(fun_val), exp.1.clone())),
                     }
                 }
                 Eval::Error(e, r) => return Eval::Error(e, r),
                 _ => unreachable!() // Functions either return a value via Eval::Default or they throw
             }
         }
-    }
-}
-
-fn eval_at_or_nil(exps: &Box<[Expression]>, index: usize, env: &Environment) -> Eval {
-    match exps.get(index) {
-        None => return Eval::Default(Value::Nil),
-        Some(ref exp) => {
-            return evaluate(exp, &env);
+        _Expression::Fun(ref args, ref body) => {
+            return Eval::Default(Value::Fun(_Fun::Lyra {
+                env: GcCell::new(env.clone()),
+                args: args.clone(),
+                body: body.clone(),
+            }));
         }
     }
 }

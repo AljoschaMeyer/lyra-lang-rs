@@ -25,6 +25,8 @@ ref_thread_local! {
     pub static managed BOOL_EQUIVALENT: Value = Value::Fun(_Fun::Native2(bool_equivalent));
     pub static managed BOOL_XOR: Value = Value::Fun(_Fun::Native2(bool_xor));
     
+    // TODO fn_apply ?
+    
     pub static managed TOPLEVEL: Environment = {
         let mut env = Environment::empty();
         env = env.insert("err_not_a_function".to_string(), ERR_NOT_A_FUNCTION.borrow().clone(), false);

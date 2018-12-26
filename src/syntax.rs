@@ -60,6 +60,7 @@ pub enum _Expression {
     Case(Box<Expression>, Box<[(Patterns, Box<[Statement]>)]>),
     Loop(Box<Expression>, Box<[(Patterns, Box<[Statement]>)]>),
     Application(Box<Expression>, Box<[Expression]>),
+    Fun(Box<[Pattern]>, Rc<Box<[Statement]>>),
     
     // operators, literals, for, map access, indexing
 }
