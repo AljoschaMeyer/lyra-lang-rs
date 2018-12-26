@@ -178,5 +178,13 @@ mod tests {
     fn test_fun() {
         assert_eq!(run("(x) -> { x }(true)").unwrap(), Value::Bool(true));
         assert_eq!(run("let mut x = false; (y) -> { x = y }(true); x").unwrap(), Value::Bool(true));
+        assert_eq!(run("
+let x = false;
+let f = () -> {
+    let mut x = false;
+    () -> { x = true }()
+};
+x
+").unwrap(), Value::Bool(false));
     }
 }

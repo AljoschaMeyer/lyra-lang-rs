@@ -486,6 +486,7 @@ impl<'a> Parser<'a> {
         
         self.skip_ws();
         if let Some(')') = self.peek() {
+            self.skip();
             return Ok(args.into_boxed_slice());
         }
 
