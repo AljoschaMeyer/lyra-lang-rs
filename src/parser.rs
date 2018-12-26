@@ -137,7 +137,8 @@ impl<'a> Parser<'a> {
         } else if self.input.starts_with("nil")
         || self.input.starts_with("mut")
         || self.input.starts_with("let")
-        || self.input.starts_with("try") {
+        || self.input.starts_with("try")
+        || self.input.starts_with("rec") {
             return self.input.len() == 3 || !is_ident_byte(self.input.as_bytes()[3]);
         } else if self.input.starts_with("true")
         || self.input.starts_with("case")
@@ -170,11 +171,12 @@ impl<'a> Parser<'a> {
 
         let start = self.input;
 
-        match self.next() {
+        match self.peek() {
             None => return Err(ParseIdError::Empty),
             Some(c) if c.is_ascii_alphabetic() => {}
             Some(_) => return Err(ParseIdError::Leading),
         }
+        self.skip();
 
         self.skip_while(|c| c.is_ascii_alphanumeric() || c == '_');
         
@@ -212,9 +214,7 @@ impl<'a> Parser<'a> {
     
     fn p_if(&mut self) -> Result<Expression, ParseError> {
         let meta = self.meta();
-        if self.peek_kw("if") { // TODO abstract this into a method
-            self.skip_str("if");
-        } else {
+        if !self.expect_kw("if") {
             return Err(ParseIfError::NoIfKw.into());
         }
         
@@ -236,33 +236,31 @@ impl<'a> Parser<'a> {
         
         self.skip_ws();
         
-        if self.peek_kw("else") {// TODO abstract this into a method
-            self.skip_str("else");
-            
-            self.skip_ws();
-            if !self.expect('{') {
-                return Err(ParseIfError::NoLBraceElse.into());
-            }
-            
-            self.skip_ws();        
-            let else_ = self.p_statements()?;
-            
-            self.skip_ws();        
-            if !self.expect('}') {
-                return Err(ParseIfError::NoRBraceElse.into());
-            }
-            
-            return Ok(Expression(_Expression::If(cond, then, Some(else_)), meta));
-        } else {
+        if !self.expect_kw("else") {
             return Ok(Expression(_Expression::If(cond, then, None), meta));
         }
+        
+        self.skip_str("else");
+        
+        self.skip_ws();
+        if !self.expect('{') {
+            return Err(ParseIfError::NoLBraceElse.into());
+        }
+        
+        self.skip_ws();        
+        let else_ = self.p_statements()?;
+        
+        self.skip_ws();        
+        if !self.expect('}') {
+            return Err(ParseIfError::NoRBraceElse.into());
+        }
+        
+        return Ok(Expression(_Expression::If(cond, then, Some(else_)), meta));
     }
     
     fn p_while(&mut self) -> Result<Expression, ParseError> {
         let meta = self.meta();
-        if self.peek_kw("while") { // TODO abstract this into a method
-            self.skip_str("while");
-        } else {
+        if !self.expect_kw("while") {
             return Err(ParseWhileError::NoWhileKw.into());
         }
         
@@ -287,9 +285,7 @@ impl<'a> Parser<'a> {
     
     fn p_try(&mut self) -> Result<Expression, ParseError> {
         let meta = self.meta();
-        if self.peek_kw("try") { // TODO abstract this into a method
-            self.skip_str("try");
-        } else {
+        if !self.expect_kw("try") {
             return Err(ParseTryError::NoTryKw.into());
         }
         
@@ -307,9 +303,7 @@ impl<'a> Parser<'a> {
         }
         
         self.skip_ws();
-        if self.peek_kw("catch") { // TODO abstract this into a method
-            self.skip_str("catch");
-        } else {
+        if !self.expect_kw("catch") {
             return Err(ParseTryError::NoCatchKw.into());
         }
         
@@ -337,9 +331,7 @@ impl<'a> Parser<'a> {
     
     fn p_case(&mut self) -> Result<Expression, ParseError> {
         let meta = self.meta();
-        if self.peek_kw("case") { // TODO abstract this into a method
-            self.skip_str("case");
-        } else {
+        if !self.expect_kw("case") {
             return Err(ParseCaseError::NoCaseKw.into());
         }
         
@@ -364,9 +356,7 @@ impl<'a> Parser<'a> {
     
     fn p_loop(&mut self) -> Result<Expression, ParseError> {
         let meta = self.meta();
-        if self.peek_kw("loop") { // TODO abstract this into a method
-            self.skip_str("loop");
-        } else {
+        if !self.expect_kw("loop") {
             return Err(ParseLoopError::NoLoopKw.into());
         }
         
@@ -440,27 +430,7 @@ impl<'a> Parser<'a> {
                 }
                 
                 self.input = backtrack_input;
-                let args = self.p_fun_args()?;
-                
-                self.skip_ws();
-                if !self.skip_str("->") {
-                    return Err(ParseFunError::Arrow.into());
-                }
-                
-                self.skip_ws();
-                if !self.expect('{') {
-                    return Err(ParseFunError::NoLBrace.into());
-                }
-                
-                self.skip_ws();        
-                let body = Rc::new(self.p_statements()?);
-                
-                self.skip_ws();        
-                if !self.expect('}') {
-                    return Err(ParseFunError::NoRBrace.into());
-                }
-                
-                return Ok(Expression(_Expression::Fun(args, body), meta));
+                return Ok(Expression(_Expression::Fun(self.p_fun_literal()?), meta));
             }
             Some(_) => Err(ParseError::LeadingExp),
         }
@@ -503,6 +473,32 @@ impl<'a> Parser<'a> {
                 _ => return Err(ParseFunError::ArgsList),
             }
         }
+    }
+    
+    // parses a function literal (but expects to the opening brace of the argument list to have
+    // been consumed already).
+    fn p_fun_literal(&mut self) -> Result<FunLiteral, ParseError> {
+        let args = self.p_fun_args()?;
+        
+        self.skip_ws();
+        if !self.skip_str("->") {
+            return Err(ParseFunError::Arrow.into());
+        }
+        
+        self.skip_ws();
+        if !self.expect('{') {
+            return Err(ParseFunError::NoLBrace.into());
+        }
+        
+        self.skip_ws();        
+        let body = Rc::new(self.p_statements()?);
+        
+        self.skip_ws();        
+        if !self.expect('}') {
+            return Err(ParseFunError::NoRBrace.into());
+        }
+        
+        return Ok(FunLiteral(args, body));
     }
 
     pub fn p_exp(&mut self) -> Result<Expression, ParseError> {
@@ -690,6 +686,56 @@ impl<'a> Parser<'a> {
         }
     }
     
+    fn p_rec(&mut self) -> Result<Statement, ParseError> {
+        let meta = self.meta();
+        if self.input.len() == 0 {
+            return Err(ParseRecError::Empty.into());
+        }
+
+        if self.expect_kw("rec") {
+            self.skip_ws();
+            let mut recs = Vec::new();
+            
+            match self.peek() {
+                Some('{') => {
+                    self.skip();
+                    loop {
+                        self.skip_ws();
+                        recs.push(self.p_rec_fun()?);
+                        self.skip_ws();
+                        if let Some('}') = self.peek() {
+                            self.skip();
+                            return Ok(Statement(_Statement::Rec(recs.into_boxed_slice()), meta))
+                        }
+                    }
+                }
+                Some(_) => {
+                    recs.push(self.p_rec_fun()?);
+                    return Ok(Statement(_Statement::Rec(recs.into_boxed_slice()), meta))
+                }
+                None => return Err(ParseRecError::Leading.into()),
+            }
+        } else {
+            return Err(ParseRecError::Leading.into());
+        }
+    }
+    
+    fn p_rec_fun(&mut self) -> Result<(String, FunLiteral), ParseError> {
+        let id = self.p_id()?;
+        self.skip_ws();
+        if !self.expect('=') {
+            return Err(ParseRecError::EqualsSign.into());
+        }
+
+        self.skip_ws();
+        if !self.expect('(') {
+            return Err(ParseRecError::LParen.into());
+        } else {
+            let rhs = self.p_fun_literal()?;
+            return Ok((id.0, rhs));
+        }
+    }
+    
     // TODO this is sooo ugly
     fn p_statement(&mut self) -> Result<Statement, ParseError> {
         match self.peek() {
@@ -698,6 +744,8 @@ impl<'a> Parser<'a> {
                 if self.starts_with_a_kw() {
                     if self.peek_kw("let") {
                         self.p_let()
+                    } else if self.peek_kw("rec") {
+                        self.p_rec()
                     } else if self.peek_kw("throw") {
                         let meta = self.meta();
                         self.skip_str("throw");
@@ -917,8 +965,22 @@ pub enum ParseLetError {
     Leading,
     #[fail(display = "invalid left-hand side of let statement")]
     Pattern(#[fail(cause)]ParsePatternError),
-    #[fail(display = "let expression requires `=` after the left-hand side")]
+    #[fail(display = "expected a `=` after the left-hand side")]
     EqualsSign,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseRecError {
+    #[fail(display = "expected rec statement, got end of input")]
+    Empty,
+    #[fail(display = "expected rec statement, did not get the `rec` keyword")]
+    Leading,
+    #[fail(display = "expected an identifier or an opening bracket `{{` after the `rec` keyword")]
+    FollowUp,
+    #[fail(display = "expected a `=` after the identifier")]
+    EqualsSign,
+    #[fail(display = "expected a function literal after the `=`")]
+    LParen,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
@@ -963,6 +1025,8 @@ pub enum ParseError {
     Pattern(#[fail(cause)]ParsePatternError),
     #[fail(display = "erroneous let statement")]
     Let(#[fail(cause)]ParseLetError),
+    #[fail(display = "erroneous rec statement")]
+    Rec(#[fail(cause)]ParseRecError),
 }
 
 impl From<ParseIdError> for ParseError {
@@ -1022,5 +1086,11 @@ impl From<ParsePatternError> for ParseError {
 impl From<ParseLetError> for ParseError {
     fn from(err: ParseLetError) -> ParseError {
         ParseError::Let(err)
+    }
+}
+
+impl From<ParseRecError> for ParseError {
+    fn from(err: ParseRecError) -> ParseError {
+        ParseError::Rec(err)
     }
 }

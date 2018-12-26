@@ -187,4 +187,14 @@ let f = () -> {
 x
 ").unwrap(), Value::Bool(false));
     }
+    
+    #[test]
+    fn test_rec() {
+        // TODO replace these with functions that terminate
+        let _ = run("rec diverge = (x) -> { diverge(bool_not(x)) }; diverge(true)"); // Must not crash (due to tail-call optimization), must go into an infinite loop.
+        let _ = run("rec {
+            foo = () -> { bar() }
+            bar = () -> { foo() }
+        }; foo()"); // Must not crash (due to tail-call optimization), must go into an infinite loop.
+    }
 }

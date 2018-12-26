@@ -4,7 +4,7 @@ use gc::{Gc, GcCell};
 use ref_thread_local::RefThreadLocal;
 
 use super::gc_foreign::OrdMap;
-use super::syntax::{Meta, Expression, _Expression, Statement, _Statement, Pattern, _Pattern, Patterns};
+use super::syntax::{Meta, Expression, _Expression, Statement, _Statement, Pattern, _Pattern, Patterns, FunLiteral};
 use super::builtins;
 
 /// Runtime representation of an arbitrary lyra value.
@@ -111,6 +111,16 @@ impl Environment {
             Binding::Mutable(val_cell) => *val_cell.borrow_mut() = val,
         }
     }
+    
+    // Set the environment of a function.
+    pub fn set_fun_env(&self, id: &str, new_env: Environment) {
+        match self.0.get(id) {
+            Some(Binding::Immutable(Value::Fun(_Fun::Lyra { ref env, .. }))) => {
+                *env.borrow_mut() = new_env;
+            }
+            _ => panic!(), // don't call this function if this case would be reached...
+        }
+    }
 }
 
 pub fn truthy(val: &Value) -> bool {
@@ -199,9 +209,6 @@ impl From<Exec> for Eval {
 ///
 /// `Err` if the evaluation throws, `Ok` otherwise.
 pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
-    // TODO trampoline tail-calls
-    let _ = env;
-
     match exp.0 {
         _Expression::Id(ref id) => Eval::Default(env.lookup(id)),
         _Expression::Nil => Eval::Default(Value::Nil),
@@ -383,7 +390,7 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                 _ => unreachable!() // Functions either return a value via Eval::Default or they throw
             }
         }
-        _Expression::Fun(ref args, ref body) => {
+        _Expression::Fun(FunLiteral(ref args, ref body)) => {
             return Eval::Default(Value::Fun(_Fun::Lyra {
                 env: GcCell::new(env.clone()),
                 args: args.clone(),
@@ -397,7 +404,7 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
 /// environment in case of (nested) assignments), as well as the resulting value.
 ///
 /// `Err` if the execution throws, `Ok` otherwise.
-pub fn exec(stmt: &Statement, env: Environment) -> Exec {
+pub fn exec(stmt: &Statement, mut env: Environment) -> Exec {
     match stmt.0 {
         _Statement::Exp(ref exp) => {
             Exec::from_eval(evaluate(exp, &env), env)
@@ -424,6 +431,22 @@ pub fn exec(stmt: &Statement, env: Environment) -> Exec {
         }
         _Statement::Break(ref exp) => {
             Exec::from_eval(evaluate(exp, &env).and_then(|val| Eval::Break(val)), env)
+        }
+        _Statement::Rec(ref recs) => {
+            for rec in recs.iter() {
+                let fun_val = match evaluate(&Expression(_Expression::Fun(rec.1.clone()), Meta::none()), &env) {
+                    Eval::Default(val) => val,
+                    _ => unreachable!(), // evaluating a function literal can't fail or exit early
+                };
+                
+                env = env.insert(rec.0.to_string(), fun_val, false);
+            }
+            
+            for rec in recs.iter() {
+                env.set_fun_env(&rec.0, env.clone());
+            }
+            
+            Exec::Default(Value::Nil, env)
         }
     }
 }

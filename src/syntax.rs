@@ -60,10 +60,13 @@ pub enum _Expression {
     Case(Box<Expression>, Box<[(Patterns, Box<[Statement]>)]>),
     Loop(Box<Expression>, Box<[(Patterns, Box<[Statement]>)]>),
     Application(Box<Expression>, Box<[Expression]>),
-    Fun(Box<[Pattern]>, Rc<Box<[Statement]>>),
+    Fun(FunLiteral),
     
     // operators, literals, for, map access, indexing
 }
+
+#[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
+pub struct FunLiteral(pub Box<[Pattern]>, pub Rc<Box<[Statement]>>);
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Statement(pub _Statement, pub Meta);
@@ -76,8 +79,9 @@ pub enum _Statement {
     Throw(Expression),
     Return(Expression),
     Break(Expression),
+    Rec(Box<[(String, FunLiteral)]>)
     
-    //  rec, let await?, await for?
+    // let await?, await for?
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
