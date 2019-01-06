@@ -227,7 +227,7 @@ impl<'a> Parser<'a> {
         }
         
         self.skip_ws();        
-        let then = self.p_statements()?;
+        let then = Box::new(self.p_statement_opt()?);
         
         self.skip_ws();        
         if !self.expect('}') {
@@ -237,7 +237,7 @@ impl<'a> Parser<'a> {
         self.skip_ws();
         
         if !self.expect_kw("else") {
-            return Ok(Expression(_Expression::If(cond, then, None), meta));
+            return Ok(Expression(_Expression::If(cond, then, Box::new(None)), meta));
         }
         
         self.skip_str("else");
@@ -248,14 +248,14 @@ impl<'a> Parser<'a> {
         }
         
         self.skip_ws();        
-        let else_ = self.p_statements()?;
+        let else_ = Box::new(self.p_statement_opt()?);
         
         self.skip_ws();        
         if !self.expect('}') {
             return Err(ParseIfError::NoRBraceElse.into());
         }
         
-        return Ok(Expression(_Expression::If(cond, then, Some(else_)), meta));
+        return Ok(Expression(_Expression::If(cond, then, else_), meta));
     }
     
     fn p_while(&mut self) -> Result<Expression, ParseError> {
@@ -273,7 +273,7 @@ impl<'a> Parser<'a> {
         }
         
         self.skip_ws();        
-        let body = self.p_statements()?;
+        let body = Box::new(self.p_statement_opt()?);
         
         self.skip_ws();        
         if !self.expect('}') {
@@ -295,7 +295,7 @@ impl<'a> Parser<'a> {
         }
         
         self.skip_ws();        
-        let try_body = self.p_statements()?;
+        let try_body = Box::new(self.p_statement_opt()?);
         
         self.skip_ws();        
         if !self.expect('}') {
@@ -317,7 +317,7 @@ impl<'a> Parser<'a> {
                 }
                 
                 self.skip_ws();        
-                let catch_body = self.p_statements()?;
+                let catch_body = Box::new(self.p_statement_opt()?);
                 
                 self.skip_ws();        
                 if !self.expect('}') {
@@ -491,7 +491,7 @@ impl<'a> Parser<'a> {
         }
         
         self.skip_ws();        
-        let body = Rc::new(self.p_statements()?);
+        let body = Rc::new(self.p_statement_opt()?);
         
         self.skip_ws();        
         if !self.expect('}') {
@@ -615,7 +615,7 @@ impl<'a> Parser<'a> {
         }
     }
     
-    fn p_branch(&mut self) -> Result<(Patterns, Box<[Statement]>), ParseError> {
+    fn p_branch(&mut self) -> Result<(Patterns, Box<Option<Statement>>), ParseError> {
         self.skip_ws();
         let patterns = self.p_patterns()?;
         
@@ -630,7 +630,7 @@ impl<'a> Parser<'a> {
         }
         
         self.skip_ws();        
-        let body = self.p_statements()?;
+        let body = Box::new(self.p_statement_opt()?);
         
         self.skip_ws();        
         if !self.expect('}') {
@@ -641,7 +641,7 @@ impl<'a> Parser<'a> {
     }
     
     // branches, terminated by a `}` (which is *not* consumed by this parser)
-    fn p_branches(&mut self) -> Result<Box<[(Patterns, Box<[Statement]>)]>, ParseError> {
+    fn p_branches(&mut self) -> Result<Box<[(Patterns, Box<Option<Statement>>)]>, ParseError> {
         let mut branches = Vec::new();
         
         self.skip_ws();
@@ -737,7 +737,8 @@ impl<'a> Parser<'a> {
     }
     
     // TODO this is sooo ugly
-    fn p_statement(&mut self) -> Result<Statement, ParseError> {
+    // non-leftrecursive statements
+    fn p_lstatement(&mut self) -> Result<Statement, ParseError> {
         match self.peek() {
             None => Err(ParseError::EmptyStmt),
             Some(c) if c.is_ascii_alphabetic() => {
@@ -796,45 +797,28 @@ impl<'a> Parser<'a> {
         }
     }
     
-    // semicolon-separated statements, terminated by a `}` (which is *not* consumed by this parser)
-    pub fn p_statements(&mut self) -> Result<Box<[Statement]>, ParseError> {
-        let mut stmts = Vec::new();
-        
+    pub fn p_statement(&mut self) -> Result<Statement, ParseError> {
+        let left = self.p_lstatement()?;
         self.skip_ws();
-        if let Some('}') = self.peek() {
-            return Ok(stmts.into_boxed_slice());
-        }
-
-        loop {
+        let meta = self.meta();
+        
+        if self.skip_str(";") {
             self.skip_ws();
-            stmts.push(self.p_statement()?);
-            self.skip_ws();
-            match self.peek() {
-                Some(';') => self.skip(),
-                Some('}') => return Ok(stmts.into_boxed_slice()),
-                _ => return Err(ParseError::StmtList),
-            }
+            let right = Box::new(self.p_statement()?);
+            Ok(Statement(_Statement::Chain(Box::new(left), right), meta))
+        } else {
+            Ok(left)
         }
     }
     
-    // semicolon-separated statements, no braces
-    pub fn p_program(&mut self) -> Result<Box<[Statement]>, ParseError> {
-        let mut stmts = Vec::new();
-        
-        if self.end() {
-            return Ok(stmts.into_boxed_slice());
+    pub fn p_statement_opt(&mut self) -> Result<Option<Statement>, ParseError> {
+        self.skip_ws();
+        if let Some('}') = self.peek() {
+            return Ok(None);
+        } else {
+            return Ok(Some(self.p_statement()?));
         }
-
-        loop {
-            self.skip_ws();
-            stmts.push(self.p_statement()?);
-            self.skip_ws();
-            match self.peek() {
-                Some(';') => self.skip(),
-                _ => return Ok(stmts.into_boxed_slice()),
-            }
-        }
-    }    
+    }
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]

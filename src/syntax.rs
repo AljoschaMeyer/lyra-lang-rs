@@ -54,32 +54,33 @@ pub enum _Expression {
     Bool(bool),
     Land(Box<Expression>, Box<Expression>),
     Lor(Box<Expression>, Box<Expression>),
-    If(Box<Expression>, Box<[Statement]>, Option<Box<[Statement]>>),
-    While(Box<Expression>, Box<[Statement]>),
-    Try(Box<[Statement]>, Pattern, Box<[Statement]>),
-    Case(Box<Expression>, Box<[(Patterns, Box<[Statement]>)]>),
-    Loop(Box<Expression>, Box<[(Patterns, Box<[Statement]>)]>),
+    If(Box<Expression>, Box<Option<Statement>>, Box<Option<Statement>>),
+    While(Box<Expression>, Box<Option<Statement>>),
+    Try(Box<Option<Statement>>, Pattern, Box<Option<Statement>>),
+    Case(Box<Expression>, Box<[(Patterns, Box<Option<Statement>>)]>),
+    Loop(Box<Expression>, Box<[(Patterns, Box<Option<Statement>>)]>),
     Application(Box<Expression>, Box<[Expression]>),
     Fun(FunLiteral),
     
-    // operators, literals, for, map access, indexing
+    // operators, literals, for (?), map access, indexing
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
-pub struct FunLiteral(pub Box<[Pattern]>, pub Rc<Box<[Statement]>>);
+pub struct FunLiteral(pub Box<[Pattern]>, pub Rc<Option<Statement>>);
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Statement(pub _Statement, pub Meta);
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub enum _Statement {
+    Chain(Box<Statement>, Box<Statement>),
     Exp(Expression),
     Let(Pattern, Expression),
     Assign(String, Expression),
     Throw(Expression),
     Return(Expression),
     Break(Expression),
-    Rec(Box<[(String, FunLiteral)]>)
+    Rec(Box<[(String, FunLiteral)]>),
     
     // let await?, await for?
 }

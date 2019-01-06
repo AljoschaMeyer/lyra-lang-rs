@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::rc::Rc;
 
 use gc::{Gc, GcCell};
@@ -22,7 +23,7 @@ pub enum _Fun {
         #[unsafe_ignore_trace]
         args: Box<[Pattern]>,
         #[unsafe_ignore_trace]
-        body: Rc<Box<[Statement]>>,
+        body: Rc<Option<Statement>>,
     },
     Native0(fn() -> Result<Value, (Value, _Reason)>),
     Native1(fn(Value) -> Result<Value, (Value, _Reason)>),
@@ -73,7 +74,7 @@ pub struct Environment(OrdMap<String, Binding>);
 impl Environment {
     /// Return the starting environment for a new program run.
     pub fn toplevel() -> Environment {
-        builtins::TOPLEVEL.borrow().clone()
+        RefThreadLocal::borrow(&builtins::TOPLEVEL).clone()
     }
 
     /// Return an empty environment.
@@ -87,10 +88,10 @@ impl Environment {
     pub fn lookup(&self, id: &str) -> Value {
         match self.0.get(id).unwrap() {
             Binding::Immutable(val) => val.clone(),
-            Binding::Mutable(val_cell) => val_cell.borrow().clone(),
+            Binding::Mutable(val_cell) => GcCell::borrow(&val_cell).clone(),
         }
     }
-    
+
     /// Create a new environment with the given value bound to the given id.
     pub fn insert(&self, id: String, val: Value, mutable: bool) -> Environment {
         let binding = if mutable {
@@ -98,10 +99,10 @@ impl Environment {
         } else {
             Binding::Immutable(val)
         };
-        
+
         Environment(self.0.update(id, binding))
     }
-    
+
     /// Assign a new value to a mutable binding.
     ///
     /// Panics if the id is unbound or immutable, but that's a static parse-error anyways.
@@ -111,7 +112,7 @@ impl Environment {
             Binding::Mutable(val_cell) => *val_cell.borrow_mut() = val,
         }
     }
-    
+
     // Set the environment of a function.
     pub fn set_fun_env(&self, id: &str, new_env: Environment) {
         match self.0.get(id) {
@@ -151,7 +152,7 @@ impl Exec {
             Eval::Break(val) => Exec::Break(val),
         }
     }
-    
+
     fn and_then<F: FnOnce(Value, Environment) -> Exec>(self, f: F) -> Exec {
         match self {
             Exec::Default(val, env) => f(val, env),
@@ -182,7 +183,7 @@ impl Eval {
             Eval::Break(val) => Eval::Break(val),
         }
     }
-    
+
     fn and_then<F: FnOnce(Value) -> Eval>(self, f: F) -> Eval {
         match self {
             Eval::Default(val) => f(val),
@@ -206,8 +207,6 @@ impl From<Exec> for Eval {
 
 /// Turns an expression (syntax) into a value (semantics), looking up bindings in the given
 /// environment (and modifying it in case of assignments nested in the expression).
-///
-/// `Err` if the evaluation throws, `Ok` otherwise.
 pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
     match exp.0 {
         _Expression::Id(ref id) => Eval::Default(env.lookup(id)),
@@ -229,10 +228,13 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
         }
         _Expression::If(ref cond, ref then, ref else_) => {
             evaluate(cond, env).and_then(|cond_val| if truthy(&cond_val) {
-                exec_many(&mut then.iter(), env.clone()).into()
+                match then.borrow() {
+                    Some(then) => exec(then, env.clone()).into(),
+                    None => Eval::Default(Value::Nil),
+                }
             } else {
-                match else_ {
-                    Some(else_stmts) => exec_many(&mut else_stmts.iter(), env.clone()).into(),
+                match else_.borrow() {
+                    Some(else_stmt) => exec(else_stmt, env.clone()).into(),
                     None => Eval::Default(Value::Nil),
                 }
             })
@@ -243,11 +245,16 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                 match evaluate(cond, env) {
                     Eval::Default(val) => {
                         if truthy(&val) {
-                            match exec_many(&mut body.iter(), env.clone()).into() {
-                                Eval::Default(val) => last_loop_val = val,
-                                Eval::Error(e, r) => return Eval::Error(e, r),
-                                Eval::Return(val) => return Eval::Return(val),
-                                Eval::Break(val) => return Eval::Default(val),
+                            match body.borrow() {
+                                Some(body) => {
+                                    match exec(body, env.clone()).into() {
+                                        Eval::Default(val) => last_loop_val = val,
+                                        Eval::Error(e, r) => return Eval::Error(e, r),
+                                        Eval::Return(val) => return Eval::Return(val),
+                                        Eval::Break(val) => return Eval::Default(val),
+                                    }
+                                }
+                                None => last_loop_val = Value::Nil,
                             }
                         } else {
                             return Eval::Default(last_loop_val);
@@ -260,17 +267,25 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
             }
         }
         _Expression::Try(ref try_body, ref catch_pat, ref catch_body) => {
-            match exec_many(&mut try_body.iter(), env.clone()).into() {
-                Eval::Default(val) => return Eval::Default(val),
-                Eval::Return(val) => return Eval::Return(val),
-                Eval::Break(val) => return Eval::Default(val),
-                Eval::Error(e, r) => {
-                    match destructure(catch_pat, &e, env.clone()) {
-                        Exec::Default(_, inner_env) => {
-                            return exec_many(&mut catch_body.iter(), inner_env).into();
-                        },
-                        Exec::Error(_, _) => return Eval::Error(e, r),
-                        _ => unreachable!(), // destructure can't return or break
+            match try_body.borrow() {
+                None => Eval::Default(Value::Nil),
+                Some(try_body) => {
+                    match exec(try_body, env.clone()).into() {
+                        Eval::Default(val) => return Eval::Default(val),
+                        Eval::Return(val) => return Eval::Return(val),
+                        Eval::Break(val) => return Eval::Default(val),
+                        Eval::Error(e, r) => {
+                            match destructure(catch_pat, &e, env.clone()) {
+                                Exec::Default(_, inner_env) => {
+                                    match catch_body.borrow() {
+                                        Some(catch_body) => return exec(catch_body, inner_env).into(),
+                                        None => Eval::Default(Value::Nil),
+                                    }
+                                },
+                                Exec::Error(_, _) => return Eval::Error(e, r),
+                                _ => unreachable!(), // destructure can't return or break
+                            }
+                        }
                     }
                 }
             }
@@ -280,12 +295,17 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                 for (ref pats, ref body) in branches.iter() {
                     match destructure_patterns(pats, &val, env.clone()) {
                         None => {} // patterns did not match, just try the next branch
-                        Some(exec) => {
-                            return exec.and_then(|_, inner_env| exec_many(&mut body.iter(), inner_env)).into();
+                        Some(inner_body) => {
+                            return inner_body.and_then(|_, inner_env| {
+                                match body.borrow() {
+                                    Some(body) => exec(body, inner_env),
+                                    None => Exec::Default(Value::Nil, inner_env),
+                                }
+                            }).into();
                         }
                     }
                 }
-                
+
                 // No branch matched, return Nil by default.
                 Eval::Default(Value::Nil)
             })
@@ -302,19 +322,27 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                                 Some(Exec::Return(val)) => return Eval::Return(val),
                                 Some(Exec::Break(val)) => return Eval::Default(val),
                                 Some(Exec::Default(_, inner_env)) => {
-                                    match exec_many(&mut body.iter(), inner_env) {
-                                        Exec::Default(val, _) => {
-                                            last_loop_val = val;
+                                    match body.borrow() {
+                                        Some(body) => {
+                                            match exec(body, inner_env) {
+                                                Exec::Default(val, _) => {
+                                                    last_loop_val = val;
+                                                    continue 'outer; // begin next iteration of the lyra loop
+                                                },
+                                                Exec::Error(e, r) => return Eval::Error(e, r),
+                                                Exec::Return(val) => return Eval::Return(val),
+                                                Exec::Break(val) => return Eval::Default(val),
+                                            }
+                                        }
+                                        None => {
+                                            last_loop_val = Value::Nil;
                                             continue 'outer; // begin next iteration of the lyra loop
-                                        },
-                                        Exec::Error(e, r) => return Eval::Error(e, r),
-                                        Exec::Return(val) => return Eval::Return(val),
-                                        Exec::Break(val) => return Eval::Default(val),
+                                        }
                                     }
                                 }
                             }
                         }
-                        
+
                         // No branch matched, the result of the previous loop run.
                         return Eval::Default(last_loop_val);
                     }
@@ -340,13 +368,13 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                     }
                 }
             }
-            
+
             match evaluate(fun, &env) {
                 Eval::Default(fun_val) => {                    
                     match fun_val {
                         Value::Fun(_Fun::Lyra { ref env, args: ref arg_patterns, ref body }) => {
                             let closed_env = env.borrow();
-                            
+
                             let mut inner_env = closed_env.clone();
                             for (i, pat) in arg_patterns.iter().enumerate() {
                                 inner_env = match destructure(
@@ -360,7 +388,10 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                                 };
                             }
                             
-                            return exec_many(&mut body.iter(), inner_env).into()
+                            match body.borrow() {
+                                Some(body) => return exec(body, inner_env).into(),
+                                None => Eval::Default(Value::Nil),
+                            }
                         }
                         Value::Fun(_Fun::Native0(f)) => {
                             match f() {
@@ -383,7 +414,7 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                                 Err((e, r)) => return Eval::Error(e, Reason(r, fun.1.clone())),
                             }
                         }
-                        _ => return Eval::Error(builtins::ERR_NOT_A_FUNCTION.borrow().clone(), Reason(_Reason::NonFunApplication(fun_val), exp.1.clone())),
+                        _ => return Eval::Error(RefThreadLocal::borrow(&builtins::ERR_NOT_A_FUNCTION).clone(), Reason(_Reason::NonFunApplication(fun_val), exp.1.clone())),
                     }
                 }
                 Eval::Error(e, r) => return Eval::Error(e, r),
@@ -402,10 +433,11 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
 
 /// Executes a statement (syntax), returning the new environment (semantics) (and modifies the old
 /// environment in case of (nested) assignments), as well as the resulting value.
-///
-/// `Err` if the execution throws, `Ok` otherwise.
 pub fn exec(stmt: &Statement, mut env: Environment) -> Exec {
     match stmt.0 {
+        _Statement::Chain(ref fst, ref snd) => {
+            exec(fst, env).and_then(|_, snd_env| exec(snd, snd_env))
+        }
         _Statement::Exp(ref exp) => {
             Exec::from_eval(evaluate(exp, &env), env)
         }
@@ -438,67 +470,44 @@ pub fn exec(stmt: &Statement, mut env: Environment) -> Exec {
                     Eval::Default(val) => val,
                     _ => unreachable!(), // evaluating a function literal can't fail or exit early
                 };
-                
+
                 env = env.insert(rec.0.to_string(), fun_val, false);
             }
-            
+
             for rec in recs.iter() {
                 env.set_fun_env(&rec.0, env.clone());
             }
-            
+
             Exec::Default(Value::Nil, env)
         }
     }
-}
-
-/// Execute multiple statements in sequence, threading the environments through, short-circuiting
-/// upon throws, returns, and breaks.
-///
-/// For zero statements, this returns the environment unchanged and Ok(Value::Nil).
-pub fn exec_many<'i, I>(stmts: &'i mut I, mut env: Environment) -> Exec
-    where I: Iterator<Item = &'i Statement> {
-        let mut val = Value::Nil;
-
-        for stmt in stmts {
-            match exec(stmt, env) {
-                Exec::Default(new_val, new_env) => {
-                    val = new_val;
-                    env = new_env;
-                }
-                Exec::Error(e, r) => return Exec::Error(e, r),
-                Exec::Return(val) => return Exec::Return(val),
-                Exec::Break(val) => return Exec::Break(val),
-            }
-        }
-
-        return Exec::Default(val, env);
 }
 
 /// Returns a new environment, adding bindings by destructuring the value according to the pattern.
 pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) -> Exec {
     match pat {
         _Pattern::Blank => Exec::Default(Value::Nil, env),
-        
+
         _Pattern::Nil => {
             match val {
                 Value::Nil => Exec::Default(Value::Nil, env),
-                _ => Exec::Error(builtins::ERR_REFUTED_NIL.borrow().clone(), Reason(_Reason::Refuted {
+                _ => Exec::Error(RefThreadLocal::borrow(&builtins::ERR_REFUTED_NIL).clone(), Reason(_Reason::Refuted {
                     expected: RefutationKind::Nil,
                     actual: val.clone(),
                 }, meta.clone())),
             }
         }
-        
+
         _Pattern::Bool(b) => {
             match val {
                 Value::Bool(b2) if b == b2 => Exec::Default(Value::Nil, env),
-                _ => Exec::Error(builtins::ERR_REFUTED_BOOL.borrow().clone(), Reason(_Reason::Refuted {
+                _ => Exec::Error(RefThreadLocal::borrow(&builtins::ERR_REFUTED_BOOL).clone(), Reason(_Reason::Refuted {
                     expected: RefutationKind::Bool(*b),
                     actual: val.clone(),
                 }, meta.clone())),
             }
         }
-        
+
         _Pattern::Id { id, mutable } => {
             Exec::Default(Value::Nil, env.insert(id.to_string(), val.clone(), *mutable))
         }
@@ -528,7 +537,7 @@ pub fn destructure_patterns(Patterns(ref pats, ref guard, _): &Patterns, val: &V
         }
         // else we didn't match, just continue (destructure can't return or break, err just means no match)
     }
-    
+
     // No inner pattern matched.
     return None;
 }

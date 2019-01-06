@@ -15,16 +15,20 @@ pub mod parser;
 pub mod semantics;
 pub mod builtins;
 
+// just for trying out some stuff
+pub mod pan;
+
 #[cfg(test)]
 mod tests {
     use super::parser::Parser;
     use super::syntax::Source;
-    use super::semantics::{Value, exec_many, Environment, Reason, Exec};
+    use super::semantics::{Value, Environment, exec, Reason, Exec};
 
     fn run(src: &str) -> Result<Value, (Value, Reason)> {
         let mut p = Parser::new(src, Source::other());
-        let program = p.p_program().unwrap();
-        let eval = exec_many(&mut program.iter(), Environment::toplevel());
+        p.skip_ws();
+        let program = p.p_statement().unwrap();
+        let eval = exec(&program, Environment::toplevel());
         assert!(p.end());
         
         match eval {
@@ -35,7 +39,8 @@ mod tests {
     
     fn assert_syntax_err(src: &str) {
         let mut p = Parser::new(src, Source::other());
-        let program = p.p_program().unwrap();
+        p.skip_ws();
+        let program = p.p_statement().unwrap();
         // TODO impl checks for unbound identifiers or assignment to immutable identifiers
         assert!(p.end());
     }
@@ -43,7 +48,6 @@ mod tests {
     #[test]
     fn test_nil() {
         assert_eq!(run("nil; nil").unwrap(), Value::Nil);
-        assert_eq!(run("").unwrap(), Value::Nil);
     }
     
     #[test]
@@ -122,7 +126,7 @@ mod tests {
     
     #[test]
     fn test_break() {
-        assert_eq!(run("break true; false").unwrap(), Value::Bool(true));
+        assert_syntax_err("break true; false");
     }
     
     #[test]
@@ -188,13 +192,13 @@ x
 ").unwrap(), Value::Bool(false));
     }
     
-    #[test]
-    fn test_rec() {
-        // TODO replace these with functions that terminate
-        let _ = run("rec diverge = (x) -> { diverge(bool_not(x)) }; diverge(true)"); // Must not crash (due to tail-call optimization), must go into an infinite loop.
-        let _ = run("rec {
-            foo = () -> { bar() }
-            bar = () -> { foo() }
-        }; foo()"); // Must not crash (due to tail-call optimization), must go into an infinite loop.
-    }
+    // #[test]
+    // fn test_tail_call_optimization() {
+    //     // TODO replace these with functions that terminate
+    //     let _ = run("rec diverge = (x) -> { diverge(bool_not(x)) }; diverge(true)"); // Must not crash (due to tail-call optimization), must go into an infinite loop.
+    //     let _ = run("rec {
+    //         foo = () -> { bar() }
+    //         bar = () -> { foo() }
+    //     }; foo()"); // Must not crash (due to tail-call optimization), must go into an infinite loop.
+    // }
 }
