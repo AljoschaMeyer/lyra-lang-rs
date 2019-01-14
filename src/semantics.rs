@@ -5,7 +5,7 @@ use gc::{Gc, GcCell};
 use ref_thread_local::RefThreadLocal;
 
 use super::gc_foreign::OrdMap;
-use super::syntax::{Meta, Expression, _Expression, Statement, _Statement, Pattern, _Pattern, Patterns, FunLiteral};
+use super::syntax::{Meta, Expression, _Expression, Statement, _Statement, Pattern, _Pattern, Patterns, FunLiteral, BinOp};
 use super::builtins;
 
 /// Runtime representation of an arbitrary lyra value.
@@ -15,6 +15,8 @@ pub enum Value {
     Bool(bool),
     Fun(_Fun)
 }
+
+// TODO impl (Partial)Ord rather than deriving?
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Trace, Finalize)]
 pub enum _Fun {
@@ -213,18 +215,40 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
         _Expression::Nil => Eval::Default(Value::Nil),
         _Expression::Bool(v) => Eval::Default(Value::Bool(v)),
         _Expression::Land(ref left, ref right) => {
+            // TODO rewrite with and_then?
             match evaluate(left, env) {
                 Eval::Default(ref val) if truthy(val) => {
                     evaluate(right, env).map(|val| Value::Bool(truthy(&val)))
                 }
-                _ => Eval::Default(Value::Bool(false)),
+                Eval::Default(ref val) if !truthy(val) => {
+                    Eval::Default(Value::Bool(false))
+                }
+                other => other,
             }
         }
         _Expression::Lor(ref left, ref right) => {
+            // TODO rewrite with and_then?
             match evaluate(left, env) {
                 Eval::Default(ref val) if truthy(val) => Eval::Default(Value::Bool(true)),
-                _ => evaluate(right, env).map(|val| Value::Bool(truthy(&val))),
+                Eval::Default(ref val) if !truthy(val) => {
+                    evaluate(right, env).map(|val| Value::Bool(truthy(&val)))
+                }
+                other => other,
             }
+        }
+        _Expression::BinOp(ref left, op, ref right) => {
+            evaluate(left, env).and_then(|val_left | {
+                evaluate(right, env).and_then(|val_right| {
+                    match op {
+                        BinOp::Eq => Eval::Default(builtins::eq(val_left, val_right).unwrap()),
+                        BinOp::Neq => Eval::Default(builtins::neq(val_left, val_right).unwrap()),
+                        BinOp::Lt => Eval::Default(builtins::lt(val_left, val_right).unwrap()),
+                        BinOp::Lte => Eval::Default(builtins::lte(val_left, val_right).unwrap()),
+                        BinOp::Gt => Eval::Default(builtins::gt(val_left, val_right).unwrap()),
+                        BinOp::Gte => Eval::Default(builtins::gte(val_left, val_right).unwrap()),
+                    }
+                })
+            })
         }
         _Expression::If(ref cond, ref then, ref else_) => {
             evaluate(cond, env).and_then(|cond_val| if truthy(&cond_val) {
@@ -370,7 +394,7 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
             }
 
             match evaluate(fun, &env) {
-                Eval::Default(fun_val) => {                    
+                Eval::Default(fun_val) => {
                     match fun_val {
                         Value::Fun(_Fun::Lyra { ref env, args: ref arg_patterns, ref body }) => {
                             let closed_env = env.borrow();
@@ -387,7 +411,7 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                                     _ => unreachable!(), // destructure can't return or break
                                 };
                             }
-                            
+
                             match body.borrow() {
                                 Some(body) => return exec(body, inner_env).into(),
                                 None => Eval::Default(Value::Nil),

@@ -192,6 +192,12 @@ x
 ").unwrap(), Value::Bool(false));
     }
     
+    #[test]
+    fn test_cmp() {
+        assert_eq!(run("nil < false").unwrap(), Value::Bool(true));
+        assert_eq!(run("false < true").unwrap(), Value::Bool(true));
+    }
+    
     // #[test]
     // fn test_tail_call_optimization() {
     //     // TODO replace these with functions that terminate

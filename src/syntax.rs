@@ -54,6 +54,7 @@ pub enum _Expression {
     Bool(bool),
     Land(Box<Expression>, Box<Expression>),
     Lor(Box<Expression>, Box<Expression>),
+    BinOp(Box<Expression>, BinOp, Box<Expression>),
     If(Box<Expression>, Box<Option<Statement>>, Box<Option<Statement>>),
     While(Box<Expression>, Box<Option<Statement>>),
     Try(Box<Option<Statement>>, Pattern, Box<Option<Statement>>),
@@ -63,6 +64,16 @@ pub enum _Expression {
     Fun(FunLiteral),
     
     // operators, literals, for (?), map access, indexing
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
+pub enum BinOp {
+    Eq,
+    Neq,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]

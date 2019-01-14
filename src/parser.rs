@@ -179,7 +179,7 @@ impl<'a> Parser<'a> {
         self.skip();
 
         self.skip_while(|c| c.is_ascii_alphanumeric() || c == '_');
-        
+
         let id = start[..start.len() - self.input.len()].to_string();
         return Ok((id, meta));
     }
@@ -211,102 +211,102 @@ impl<'a> Parser<'a> {
             }
         }
     }
-    
+
     fn p_if(&mut self) -> Result<Expression, ParseError> {
         let meta = self.meta();
         if !self.expect_kw("if") {
             return Err(ParseIfError::NoIfKw.into());
         }
-        
+
         self.skip_ws();
         let cond = Box::new(self.p_exp()?);
-        
+
         self.skip_ws();
         if !self.expect('{') {
             return Err(ParseIfError::NoLBraceThen.into());
         }
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         let then = Box::new(self.p_statement_opt()?);
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         if !self.expect('}') {
             return Err(ParseIfError::NoRBraceThen.into());
         }
-        
+
         self.skip_ws();
-        
+
         if !self.expect_kw("else") {
             return Ok(Expression(_Expression::If(cond, then, Box::new(None)), meta));
         }
-        
+
         self.skip_str("else");
-        
+
         self.skip_ws();
         if !self.expect('{') {
             return Err(ParseIfError::NoLBraceElse.into());
         }
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         let else_ = Box::new(self.p_statement_opt()?);
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         if !self.expect('}') {
             return Err(ParseIfError::NoRBraceElse.into());
         }
-        
+
         return Ok(Expression(_Expression::If(cond, then, else_), meta));
     }
-    
+
     fn p_while(&mut self) -> Result<Expression, ParseError> {
         let meta = self.meta();
         if !self.expect_kw("while") {
             return Err(ParseWhileError::NoWhileKw.into());
         }
-        
+
         self.skip_ws();
         let cond = Box::new(self.p_exp()?);
-        
+
         self.skip_ws();
         if !self.expect('{') {
             return Err(ParseWhileError::NoLBrace.into());
         }
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         let body = Box::new(self.p_statement_opt()?);
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         if !self.expect('}') {
             return Err(ParseWhileError::NoRBrace.into());
         }
-        
+
         return Ok(Expression(_Expression::While(cond, body), meta));
     }
-    
+
     fn p_try(&mut self) -> Result<Expression, ParseError> {
         let meta = self.meta();
         if !self.expect_kw("try") {
             return Err(ParseTryError::NoTryKw.into());
         }
-        
+
         self.skip_ws();
         if !self.expect('{') {
             return Err(ParseTryError::NoLBraceTry.into());
         }
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         let try_body = Box::new(self.p_statement_opt()?);
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         if !self.expect('}') {
             return Err(ParseTryError::NoRBraceTry.into());
         }
-        
+
         self.skip_ws();
         if !self.expect_kw("catch") {
             return Err(ParseTryError::NoCatchKw.into());
         }
-        
+
         self.skip_ws();
         match self.p_pattern() {
             Err(err) => return Err(ParseTryError::Pattern(err).into()),
@@ -315,67 +315,67 @@ impl<'a> Parser<'a> {
                 if !self.expect('{') {
                     return Err(ParseTryError::NoLBraceCatch.into());
                 }
-                
-                self.skip_ws();        
+
+                self.skip_ws();
                 let catch_body = Box::new(self.p_statement_opt()?);
-                
-                self.skip_ws();        
+
+                self.skip_ws();
                 if !self.expect('}') {
                     return Err(ParseTryError::NoRBraceCatch.into());
-                }    
-                
+                }
+
                 return Ok(Expression(_Expression::Try(try_body, pat, catch_body), meta));
             },
         }
     }
-    
+
     fn p_case(&mut self) -> Result<Expression, ParseError> {
         let meta = self.meta();
         if !self.expect_kw("case") {
             return Err(ParseCaseError::NoCaseKw.into());
         }
-        
+
         self.skip_ws();
         let matchee = Box::new(self.p_exp()?);
-        
+
         self.skip_ws();
         if !self.expect('{') {
             return Err(ParseCaseError::NoLBrace.into());
         }
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         let branches = self.p_branches()?;
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         if !self.expect('}') {
             return Err(ParseCaseError::NoRBrace.into());
         }
-        
+
         return Ok(Expression(_Expression::Case(matchee, branches), meta));
     }
-    
+
     fn p_loop(&mut self) -> Result<Expression, ParseError> {
         let meta = self.meta();
         if !self.expect_kw("loop") {
             return Err(ParseLoopError::NoLoopKw.into());
         }
-        
+
         self.skip_ws();
         let matchee = Box::new(self.p_exp()?);
-        
+
         self.skip_ws();
         if !self.expect('{') {
             return Err(ParseLoopError::NoLBrace.into());
         }
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         let branches = self.p_branches()?;
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         if !self.expect('}') {
             return Err(ParseLoopError::NoRBrace.into());
         }
-        
+
         return Ok(Expression(_Expression::Loop(matchee, branches), meta));
     }
 
@@ -420,7 +420,7 @@ impl<'a> Parser<'a> {
                 let meta = self.meta();
                 self.skip();
                 self.skip_ws();
-                
+
                 let backtrack_input = self.input;
                 if let Ok(yay) = self.p_parens() {
                     self.skip_ws();
@@ -428,19 +428,19 @@ impl<'a> Parser<'a> {
                         return Ok(yay);
                     }
                 }
-                
+
                 self.input = backtrack_input;
                 return Ok(Expression(_Expression::Fun(self.p_fun_literal()?), meta));
             }
             Some(_) => Err(ParseError::LeadingExp),
         }
     }
-    
+
     // Parens for associativity. Expects the opening paren to have been consumed already (as well
     // as the whitespace succeeding it).
     fn p_parens(&mut self) -> Result<Expression, ParseError> {
         let exp = self.p_exp()?;
-        
+
         self.skip_ws();
         if self.expect(')') {
             return Ok(exp);
@@ -448,12 +448,12 @@ impl<'a> Parser<'a> {
             Err(ParseError::RParen)
         }
     }
-    
+
     // Expects the opening paren and its succeeding whitepace to have been consumed already.
     // Consumes the closing paren.
     fn p_fun_args(&mut self) -> Result<Box<[Pattern]>, ParseFunError> {
         let mut args = Vec::new();
-        
+
         self.skip_ws();
         if let Some(')') = self.peek() {
             self.skip();
@@ -474,30 +474,30 @@ impl<'a> Parser<'a> {
             }
         }
     }
-    
+
     // parses a function literal (but expects to the opening brace of the argument list to have
     // been consumed already).
     fn p_fun_literal(&mut self) -> Result<FunLiteral, ParseError> {
         let args = self.p_fun_args()?;
-        
+
         self.skip_ws();
         if !self.skip_str("->") {
             return Err(ParseFunError::Arrow.into());
         }
-        
+
         self.skip_ws();
         if !self.expect('{') {
             return Err(ParseFunError::NoLBrace.into());
         }
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         let body = Rc::new(self.p_statement_opt()?);
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         if !self.expect('}') {
             return Err(ParseFunError::NoRBrace.into());
         }
-        
+
         return Ok(FunLiteral(args, body));
     }
 
@@ -505,17 +505,17 @@ impl<'a> Parser<'a> {
         let left = self.p_lexp()?;
         self.skip_ws();
         let meta = self.meta();
-        
+
         if self.skip_str("(") {
             self.skip_ws();
             let args = self.p_exps()?;
-            
-            self.skip_ws();        
+
+            self.skip_ws();
             if !self.expect(')') {
                 return Err(ParseError::RParenApplication);
             }
-            
-            return Ok(Expression(_Expression::Application(Box::new(left), args), meta));            
+
+            return Ok(Expression(_Expression::Application(Box::new(left), args), meta));
         } else if self.skip_str("&&") {
             self.skip_ws();
             let rhs = Box::new(self.p_exp()?);
@@ -524,15 +524,39 @@ impl<'a> Parser<'a> {
             self.skip_ws();
             let rhs = Box::new(self.p_exp()?);
             Ok(Expression(_Expression::Lor(Box::new(left), rhs), meta))
+        } else if self.skip_str("==") {
+            self.skip_ws();
+            let rhs = Box::new(self.p_exp()?);
+            Ok(Expression(_Expression::BinOp(Box::new(left), BinOp::Eq, rhs), meta))
+        } else if self.skip_str("!=") {
+            self.skip_ws();
+            let rhs = Box::new(self.p_exp()?);
+            Ok(Expression(_Expression::BinOp(Box::new(left), BinOp::Neq, rhs), meta))
+        } else if self.skip_str("<=") {
+            self.skip_ws();
+            let rhs = Box::new(self.p_exp()?);
+            Ok(Expression(_Expression::BinOp(Box::new(left), BinOp::Lte, rhs), meta))
+        } else if self.skip_str("<") {
+            self.skip_ws();
+            let rhs = Box::new(self.p_exp()?);
+            Ok(Expression(_Expression::BinOp(Box::new(left), BinOp::Lt, rhs), meta))
+        } else if self.skip_str(">=") {
+            self.skip_ws();
+            let rhs = Box::new(self.p_exp()?);
+            Ok(Expression(_Expression::BinOp(Box::new(left), BinOp::Gte, rhs), meta))
+        } else if self.skip_str(">") {
+            self.skip_ws();
+            let rhs = Box::new(self.p_exp()?);
+            Ok(Expression(_Expression::BinOp(Box::new(left), BinOp::Gt, rhs), meta))
         } else {
             Ok(left)
         }
     }
-    
+
     // semicolon-separated expressions, terminated by a `)` (which is *not* consumed by this parser)
     pub fn p_exps(&mut self) -> Result<Box<[Expression]>, ParseError> {
         let mut exps = Vec::new();
-        
+
         self.skip_ws();
         if let Some(')') = self.peek() {
             return Ok(exps.into_boxed_slice());
@@ -549,7 +573,7 @@ impl<'a> Parser<'a> {
             }
         }
     }
-    
+
     pub fn p_pattern(&mut self) -> Result<Pattern, ParsePatternError> {
         match self.peek() {
             None => Err(ParsePatternError::Empty),
@@ -564,7 +588,7 @@ impl<'a> Parser<'a> {
                         self.skip();
                         Ok(Pattern(_Pattern::Blank, meta))
                     }
-                } 
+                }
             }
             Some(c) if c.is_ascii_alphabetic() => {
                 if self.starts_with_a_kw() {
@@ -590,18 +614,18 @@ impl<'a> Parser<'a> {
             Some(_) => Err(ParsePatternError::Leading),
         }
     }
-    
+
     fn p_patterns(&mut self) -> Result<Patterns, ParseError> {
         let meta = self.meta();
         self.skip_ws();
         let mut pats = Vec::new();
-        
+
         loop {
             self.skip_ws();
             let pat = self.p_pattern()?;
             pats.push(pat);
             self.skip_ws();
-            
+
             if self.input.starts_with("->") {
                 return Ok(Patterns(pats.into_boxed_slice(), None, meta));
             } else if self.skip_str("|") {
@@ -614,36 +638,36 @@ impl<'a> Parser<'a> {
             }
         }
     }
-    
+
     fn p_branch(&mut self) -> Result<(Patterns, Box<Option<Statement>>), ParseError> {
         self.skip_ws();
         let patterns = self.p_patterns()?;
-        
+
         self.skip_ws();
         if !self.skip_str("->") {
             return Err(ParseBranchError::Arrow.into());
         }
-        
+
         self.skip_ws();
         if !self.expect('{') {
             return Err(ParseBranchError::NoLBrace.into());
         }
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         let body = Box::new(self.p_statement_opt()?);
-        
-        self.skip_ws();        
+
+        self.skip_ws();
         if !self.expect('}') {
             return Err(ParseBranchError::NoRBrace.into());
         }
-        
+
         return Ok((patterns, body));
     }
-    
+
     // branches, terminated by a `}` (which is *not* consumed by this parser)
     fn p_branches(&mut self) -> Result<Box<[(Patterns, Box<Option<Statement>>)]>, ParseError> {
         let mut branches = Vec::new();
-        
+
         self.skip_ws();
         if let Some('}') = self.peek() {
             return Ok(branches.into_boxed_slice());
@@ -658,7 +682,7 @@ impl<'a> Parser<'a> {
             }
         }
     }
-    
+
     fn p_let(&mut self) -> Result<Statement, ParseError> {
         let meta = self.meta();
         if self.input.len() == 0 {
@@ -677,7 +701,7 @@ impl<'a> Parser<'a> {
 
                     self.skip_ws();
                     let rhs = self.p_exp()?;
-                    
+
                     return Ok(Statement(_Statement::Let(lhs, rhs), meta));
                 },
             }
@@ -685,7 +709,7 @@ impl<'a> Parser<'a> {
             return Err(ParseLetError::Leading.into());
         }
     }
-    
+
     fn p_rec(&mut self) -> Result<Statement, ParseError> {
         let meta = self.meta();
         if self.input.len() == 0 {
@@ -695,7 +719,7 @@ impl<'a> Parser<'a> {
         if self.expect_kw("rec") {
             self.skip_ws();
             let mut recs = Vec::new();
-            
+
             match self.peek() {
                 Some('{') => {
                     self.skip();
@@ -719,7 +743,7 @@ impl<'a> Parser<'a> {
             return Err(ParseRecError::Leading.into());
         }
     }
-    
+
     fn p_rec_fun(&mut self) -> Result<(String, FunLiteral), ParseError> {
         let id = self.p_id()?;
         self.skip_ws();
@@ -735,7 +759,7 @@ impl<'a> Parser<'a> {
             return Ok((id.0, rhs));
         }
     }
-    
+
     // TODO this is sooo ugly
     // non-leftrecursive statements
     fn p_lstatement(&mut self) -> Result<Statement, ParseError> {
@@ -772,7 +796,7 @@ impl<'a> Parser<'a> {
                 } else {
                     let exp = self.p_exp()?;
                     let meta = exp.1.clone();
-                    
+
                     match exp.0 {
                         _Expression::Id(ref id) => {
                             match self.peek() {
@@ -786,7 +810,7 @@ impl<'a> Parser<'a> {
                             }
                         }
                         _ => Ok(Statement(_Statement::Exp(exp), meta)),
-                    }                  
+                    }
                 }
             },
             Some(_) => {
@@ -796,12 +820,12 @@ impl<'a> Parser<'a> {
             }
         }
     }
-    
+
     pub fn p_statement(&mut self) -> Result<Statement, ParseError> {
         let left = self.p_lstatement()?;
         self.skip_ws();
         let meta = self.meta();
-        
+
         if self.skip_str(";") {
             self.skip_ws();
             let right = Box::new(self.p_statement()?);
@@ -810,7 +834,7 @@ impl<'a> Parser<'a> {
             Ok(left)
         }
     }
-    
+
     pub fn p_statement_opt(&mut self) -> Result<Option<Statement>, ParseError> {
         self.skip_ws();
         if let Some('}') = self.peek() {
