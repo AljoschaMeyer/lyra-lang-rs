@@ -250,6 +250,9 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                 })
             })
         }
+        _Expression::Not(ref inner) => {
+            evaluate(inner, env).map(|val| builtins::is_not_truthy(val).unwrap())
+        }
         _Expression::If(ref cond, ref then, ref else_) => {
             evaluate(cond, env).and_then(|cond_val| if truthy(&cond_val) {
                 match then.borrow() {

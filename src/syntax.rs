@@ -55,6 +55,7 @@ pub enum _Expression {
     Land(Box<Expression>, Box<Expression>),
     Lor(Box<Expression>, Box<Expression>),
     BinOp(Box<Expression>, BinOp, Box<Expression>),
+    Not(Box<Expression>),
     If(Box<Expression>, Box<Option<Statement>>, Box<Option<Statement>>),
     While(Box<Expression>, Box<Option<Statement>>),
     Try(Box<Option<Statement>>, Pattern, Box<Option<Statement>>),
@@ -62,7 +63,7 @@ pub enum _Expression {
     Loop(Box<Expression>, Box<[(Patterns, Box<Option<Statement>>)]>),
     Application(Box<Expression>, Box<[Expression]>),
     Fun(FunLiteral),
-    
+
     // operators, literals, for (?), map access, indexing
 }
 
@@ -92,7 +93,7 @@ pub enum _Statement {
     Return(Expression),
     Break(Expression),
     Rec(Box<[(String, FunLiteral)]>),
-    
+
     // let await?, await for?
 }
 

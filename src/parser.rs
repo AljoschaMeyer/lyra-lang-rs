@@ -409,6 +409,13 @@ impl<'a> Parser<'a> {
                     Ok(Expression(_Expression::Id(id), meta))
                 }
             },
+            Some('!') => {
+                let meta = self.meta();
+                self.skip();
+                self.skip_ws();
+                let inner = Box::new(self.p_exp()?);
+                Ok(Expression(_Expression::Not(inner), meta))
+            }
             Some('(') => {
                 // This parser code is already a horrible mess, so I'm going to be lazy and
                 // implement the distinction between a function literal and parens for

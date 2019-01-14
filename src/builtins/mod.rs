@@ -13,6 +13,7 @@ ref_thread_local! {
 
     pub static managed HALT: Value = Value::Fun(_Fun::Native0(halt));
     pub static managed IS_TRUTHY: Value = Value::Fun(_Fun::Native1(is_truthy));
+    pub static managed IS_NOT_TRUTHY: Value = Value::Fun(_Fun::Native1(is_not_truthy));
     pub static managed EQ: Value = Value::Fun(_Fun::Native2(eq));
     pub static managed NEQ: Value = Value::Fun(_Fun::Native2(neq));
     pub static managed LT: Value = Value::Fun(_Fun::Native2(lt));
@@ -41,6 +42,7 @@ ref_thread_local! {
 
         env = env.insert("halt".to_string(), HALT.borrow().clone(), false);
         env = env.insert("is_truthy".to_string(), IS_TRUTHY.borrow().clone(), false);
+        env = env.insert("is_not_truthy".to_string(), IS_NOT_TRUTHY.borrow().clone(), false);
         env = env.insert("equal".to_string(), EQ.borrow().clone(), false);
         env = env.insert("not_equal".to_string(), NEQ.borrow().clone(), false);
         env = env.insert("lesser_than".to_string(), LT.borrow().clone(), false);
@@ -68,6 +70,10 @@ fn halt() -> Result<Value, (Value, _Reason)> {
 
 fn is_truthy(val: Value) -> Result<Value, (Value, _Reason)> {
     Ok(Value::Bool(truthy(&val)))
+}
+
+pub fn is_not_truthy(val: Value) -> Result<Value, (Value, _Reason)> {
+    Ok(Value::Bool(!truthy(&val)))
 }
 
 pub fn eq(a: Value, b: Value) -> Result<Value, (Value, _Reason)> {
