@@ -11,17 +11,16 @@ extern crate ropey;
 
 pub mod gc_foreign;
 pub mod syntax;
+pub mod syntax_checks;
 pub mod parser;
 pub mod semantics;
 pub mod builtins;
-
-// just for trying out some stuff
-pub mod pan;
 
 #[cfg(test)]
 mod tests {
     use super::parser::Parser;
     use super::syntax::Source;
+    use super::syntax_checks::{Scope, check};
     use super::semantics::{Value, Environment, exec, Reason, Exec};
 
     fn run(src: &str) -> Result<Value, (Value, Reason)> {
@@ -41,8 +40,10 @@ mod tests {
         let mut p = Parser::new(src, Source::other());
         p.skip_ws();
         let program = p.p_statement().unwrap();
-        // TODO impl checks for unbound identifiers or assignment to immutable identifiers
+
+        let top_scope = Scope::from_env(&Environment::toplevel());
         assert!(p.end());
+        assert!(check(top_scope, &program).is_err());
     }
 
     #[test]
@@ -126,7 +127,7 @@ mod tests {
 
     #[test]
     fn test_break() {
-        assert_syntax_err("break true; false");
+        assert_eq!(run("break true; false").unwrap(), Value::Bool(true));
     }
 
     #[test]
@@ -151,7 +152,7 @@ mod tests {
 
     #[test]
     fn test_case() {
-        assert_syntax_err("case nil { x | true -> {}}");
+        assert_syntax_err("case nil { x | true -> { x }}");
         assert_eq!(run("case true {}").unwrap(), Value::Nil);
         assert_eq!(run("case true {_ -> {true}}").unwrap(), Value::Bool(true));
         assert_eq!(run("case true {true -> {}}").unwrap(), Value::Nil);

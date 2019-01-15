@@ -71,7 +71,7 @@ pub enum Binding {
 /// The execution environment, this is the internal program state that is modified by statements.
 /// Serves to look up bindings by name.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Trace, Finalize)]
-pub struct Environment(OrdMap<String, Binding>);
+pub struct Environment(pub OrdMap<String, Binding>);
 
 impl Environment {
     /// Return the starting environment for a new program run.

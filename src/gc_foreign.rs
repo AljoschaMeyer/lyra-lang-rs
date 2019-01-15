@@ -20,7 +20,7 @@ unsafe impl<T: Trace + Clone> Trace for Vector<T> {
 
 /// A garbage-collectable `im_rc::OrdMap`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct OrdMap<K: Clone + Ord, V: Clone>(im_rc::OrdMap<K, V>);
+pub struct OrdMap<K: Clone + Ord, V: Clone>(pub im_rc::OrdMap<K, V>);
 
 impl<K: Trace + Clone + Ord, V: Trace + Clone> Finalize for OrdMap<K, V> {}
 unsafe impl<K: Trace + Clone + Ord, V: Trace + Clone> Trace for OrdMap<K, V> {
@@ -43,7 +43,7 @@ impl<K: Ord + Clone, V: Clone> OrdMap<K, V> {
     {
         self.0.get(key)
     }
-    
+
     #[must_use]
     pub fn update(&self, key: K, value: V) -> Self {
         OrdMap(self.0.update(key, value))
