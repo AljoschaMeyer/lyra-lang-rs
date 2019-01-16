@@ -10,6 +10,7 @@ ref_thread_local! {
     pub static managed ERR_TYPE: Value = Value::Nil; // TODO turn into string
     pub static managed ERR_REFUTED_NIL: Value = Value::Nil; // TODO turn into string
     pub static managed ERR_REFUTED_BOOL: Value = Value::Nil; // TODO turn into string
+    pub static managed ERR_REFUTED_NUM: Value = Value::Nil; // TODO turn into string
 
     pub static managed HALT: Value = Value::Fun(_Fun::Native0(halt));
     pub static managed IS_TRUTHY: Value = Value::Fun(_Fun::Native1(is_truthy));

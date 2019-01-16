@@ -174,6 +174,14 @@ mod tests {
     }
 
     #[test]
+    fn test_num() {
+        assert_eq!(run("17 == 17.00").unwrap(), Value::Bool(true));
+        assert_eq!(run("17 == 0x11").unwrap(), Value::Bool(true));
+
+        assert_eq!(run("case 5 {50 / 10.0 -> { true } _ -> { false }}").unwrap(), Value::Bool(true));
+    }
+
+    #[test]
     #[should_panic(expected = "called the built-in `halt` function")]
     fn test_halt() {
         let _ = run("halt()");

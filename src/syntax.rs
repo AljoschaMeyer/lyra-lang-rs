@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use num::BigRational;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
 pub struct Position {
     pub offset: usize,
@@ -52,6 +54,7 @@ pub enum _Expression {
     Id(String),
     Nil,
     Bool(bool),
+    Num(BigRational),
     Land(Box<Expression>, Box<Expression>),
     Lor(Box<Expression>, Box<Expression>),
     BinOp(Box<Expression>, BinOp, Box<Expression>),
@@ -109,6 +112,7 @@ pub enum _Pattern {
     },
     Nil,
     Bool(bool),
+    Num(BigRational),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]

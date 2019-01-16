@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use num::{BigInt, BigRational, Num, Zero};
+
 use super::syntax::*;
 
 pub struct Parser<'a> {
@@ -379,6 +381,66 @@ impl<'a> Parser<'a> {
         return Ok(Expression(_Expression::Loop(matchee, branches), meta));
     }
 
+    fn p_number(&mut self) -> Result<(BigRational, Meta), ParseNumError> {
+        let meta = self.meta();
+        let start = self.input;
+
+        if self.skip_str("0x") {
+            // parse hexadecimal literal
+            match self.next() {
+                None => return Err(ParseNumError::EmptyHex),
+                Some(c) if c.is_ascii_hexdigit() => {}
+                Some(_) => return Err(ParseNumError::LeadingHex),
+            }
+
+            self.skip_while(|c| c.is_ascii_hexdigit() || c == '_');
+
+            let int = BigInt::from_str_radix(&start[2..start.len() - self.input.len()], 16).unwrap();
+            return Ok((BigRational::from_integer(int), meta));
+        } else {
+            // parse either a decimal integer or a float
+            match self.next() {
+                None => return Err(ParseNumError::Empty),
+                Some(c) if c.is_digit(10) => {}
+                Some(_) => return Err(ParseNumError::Leading),
+            }
+
+            self.skip_while(|c| c.is_digit(10) || c == '_');
+
+            let int = BigInt::from_str_radix(&start[..start.len() - self.input.len()], 10).unwrap();
+
+            if let Some('.') = self.peek() {
+                // parse float
+                self.skip();
+                let start_fraction = self.input;
+                match self.next() {
+                    None => return Err(ParseNumError::EmptyFractionalPart),
+                    Some('0'...'9') => {}
+                    Some(_) => return Err(ParseNumError::LeadingFractionalPart),
+                }
+                self.skip_while(|c| c.is_digit(10));
+
+                let fractional_int = BigInt::from_str_radix(&start_fraction[..start_fraction.len() - self.input.len()], 10).unwrap();
+                let ratio = if fractional_int.is_zero() {
+                    BigRational::from_integer(int)
+                } else {
+                    let fractional_part = BigRational::from_integer(fractional_int).recip();
+                    BigRational::from_integer(int) + fractional_part
+                };
+
+                return Ok((ratio, meta));
+            } else {
+                // not a float
+                return Ok((BigRational::from_integer(int), meta));
+            }
+        }
+    }
+
+    fn p_num(&mut self) -> Result<Expression, ParseNumError> {
+        let (number, meta) = self.p_number()?;
+        Ok(Expression(_Expression::Num(number), meta))
+    }
+
     // Non-leftrecursive expressions
     fn p_lexp(&mut self) -> Result<Expression, ParseError> {
         match self.peek() {
@@ -409,6 +471,7 @@ impl<'a> Parser<'a> {
                     Ok(Expression(_Expression::Id(id), meta))
                 }
             },
+            Some(c) if c.is_digit(10) => Ok(self.p_num()?),
             Some('!') => {
                 let meta = self.meta();
                 self.skip();
@@ -618,6 +681,22 @@ impl<'a> Parser<'a> {
                     Ok(Pattern(_Pattern::Id { id, mutable: false }, meta))
                 }
             },
+            Some(c) if c.is_digit(10) => {
+                let (numerator, meta) = self.p_number()?;
+                self.skip_ws();
+                if self.skip_str("/") {
+                    self.skip_ws();
+                    let (denominator, _) = self.p_number()?;
+
+                    if denominator.is_zero() {
+                        Err(ParsePatternError::ZeroDenominator)
+                    } else {
+                        Ok(Pattern(_Pattern::Num(numerator / denominator), meta))
+                    }
+                } else {
+                    Ok(Pattern(_Pattern::Num(numerator), meta))
+                }
+            }
             Some(_) => Err(ParsePatternError::Leading),
         }
     }
@@ -887,6 +966,22 @@ pub enum ParseWhileError {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
+pub enum ParseNumError {
+    #[fail(display = "expected number literal, got end of input")]
+    Empty,
+    #[fail(display = "expected number literal, got invalid first digit")]
+    Leading,
+    #[fail(display = "hex integer literal must contain at least one digit")]
+    EmptyHex,
+    #[fail(display = "hex integer literal has invalid first digit")]
+    LeadingHex,
+    #[fail(display = "decimal point must be followed by at least one digit")]
+    EmptyFractionalPart,
+    #[fail(display = "decimal point must be followed by a decimal digit")]
+    LeadingFractionalPart,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]
 pub enum ParseTryError {
     #[fail(display = "expected try expression, did not get the `try` keyword")]
     NoTryKw,
@@ -954,11 +1049,21 @@ pub enum ParsePatternError {
     NonPatternKw,
     #[fail(display = "erroneous identifier")]
     Id(#[fail(cause)]ParseIdError),
+    #[fail(display = "erroneous number pattern")]
+    Num(#[fail(cause)]ParseNumError),
+    #[fail(display = "denominator of a number pattern may not be zero")]
+    ZeroDenominator,
 }
 
 impl From<ParseIdError> for ParsePatternError {
     fn from(err: ParseIdError) -> ParsePatternError {
         ParsePatternError::Id(err)
+    }
+}
+
+impl From<ParseNumError> for ParsePatternError {
+    fn from(err: ParseNumError) -> ParsePatternError {
+        ParsePatternError::Num(err)
     }
 }
 
@@ -1032,6 +1137,8 @@ pub enum ParseError {
     Case(#[fail(cause)]ParseCaseError),
     #[fail(display = "erroneous loop expression")]
     Loop(#[fail(cause)]ParseLoopError),
+    #[fail(display = "erroneous number literal")]
+    Num(#[fail(cause)]ParseNumError),
     #[fail(display = "erroneous function literal")]
     Fun(#[fail(cause)]ParseFunError),
     #[fail(display = "erroneous branch")]
@@ -1077,6 +1184,12 @@ impl From<ParseCaseError> for ParseError {
 impl From<ParseLoopError> for ParseError {
     fn from(err: ParseLoopError) -> ParseError {
         ParseError::Loop(err)
+    }
+}
+
+impl From<ParseNumError> for ParseError {
+    fn from(err: ParseNumError) -> ParseError {
+        ParseError::Num(err)
     }
 }
 

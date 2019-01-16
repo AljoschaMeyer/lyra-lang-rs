@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::rc::Rc;
 
 use gc::{Gc, GcCell};
+use num::BigRational;
 use ref_thread_local::RefThreadLocal;
 
 use super::gc_foreign::OrdMap;
@@ -13,7 +14,8 @@ use super::builtins;
 pub enum Value {
     Nil,
     Bool(bool),
-    Fun(_Fun)
+    Num(#[unsafe_ignore_trace] BigRational),
+    Fun(_Fun),
 }
 
 // TODO impl (Partial)Ord rather than deriving?
@@ -58,6 +60,7 @@ pub enum _Reason {
 pub enum RefutationKind {
     Nil,
     Bool(bool),
+    Num(BigRational),
 }
 
 /// The environments need to distinguish whether the values they store are for mutable or immutable
@@ -214,27 +217,24 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
         _Expression::Id(ref id) => Eval::Default(env.lookup(id)),
         _Expression::Nil => Eval::Default(Value::Nil),
         _Expression::Bool(v) => Eval::Default(Value::Bool(v)),
+        _Expression::Num(ref v) => Eval::Default(Value::Num(v.clone())),
         _Expression::Land(ref left, ref right) => {
-            // TODO rewrite with and_then?
-            match evaluate(left, env) {
-                Eval::Default(ref val) if truthy(val) => {
+            evaluate(left, env).and_then(|val| {
+                if truthy(&val) {
                     evaluate(right, env).map(|val| Value::Bool(truthy(&val)))
-                }
-                Eval::Default(ref val) if !truthy(val) => {
+                } else {
                     Eval::Default(Value::Bool(false))
                 }
-                other => other,
-            }
+            })
         }
         _Expression::Lor(ref left, ref right) => {
-            // TODO rewrite with and_then?
-            match evaluate(left, env) {
-                Eval::Default(ref val) if truthy(val) => Eval::Default(Value::Bool(true)),
-                Eval::Default(ref val) if !truthy(val) => {
+            evaluate(left, env).and_then(|val| {
+                if truthy(&val) {
+                    Eval::Default(Value::Bool(true))
+                } else {
                     evaluate(right, env).map(|val| Value::Bool(truthy(&val)))
                 }
-                other => other,
-            }
+            })
         }
         _Expression::BinOp(ref left, op, ref right) => {
             evaluate(left, env).and_then(|val_left | {
@@ -530,6 +530,16 @@ pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) 
                 Value::Bool(b2) if b == b2 => Exec::Default(Value::Nil, env),
                 _ => Exec::Error(RefThreadLocal::borrow(&builtins::ERR_REFUTED_BOOL).clone(), Reason(_Reason::Refuted {
                     expected: RefutationKind::Bool(*b),
+                    actual: val.clone(),
+                }, meta.clone())),
+            }
+        }
+
+        _Pattern::Num(n) => {
+            match val {
+                Value::Num(n2) if n == n2 => Exec::Default(Value::Nil, env),
+                _ => Exec::Error(RefThreadLocal::borrow(&builtins::ERR_REFUTED_NUM).clone(), Reason(_Reason::Refuted {
+                    expected: RefutationKind::Num(n.clone()),
                     actual: val.clone(),
                 }, meta.clone())),
             }
