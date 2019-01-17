@@ -52,7 +52,26 @@ pub enum _Reason {
         got: Value,
         name: &'static str,
         index: usize,
-    }
+    },
+    ZeroError {
+        got: Value,
+        name: &'static str,
+        index: usize,
+    },
+    RootError {
+        a: Integer,
+        b: u32,
+    },
+    NegativeError {
+        got: Value,
+        name: &'static str,
+        index: usize,
+    },
+    U32Error {
+        got: Value,
+        name: &'static str,
+        index: usize,
+    },
 }
 
 /// What a refutable pattern can expect.
