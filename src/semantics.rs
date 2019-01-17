@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::rc::Rc;
 
 use gc::{Gc, GcCell};
-use rug::Rational;
+use rug::Integer;
 use ref_thread_local::RefThreadLocal;
 
 use super::gc_foreign::OrdMap;
@@ -14,7 +14,7 @@ use super::builtins;
 pub enum Value {
     Nil,
     Bool(bool),
-    Num(#[unsafe_ignore_trace] Rational),
+    Int(#[unsafe_ignore_trace] Integer),
     Fun(_Fun),
 }
 
@@ -60,7 +60,7 @@ pub enum _Reason {
 pub enum RefutationKind {
     Nil,
     Bool(bool),
-    Num(Rational),
+    Int(Integer),
 }
 
 /// The environments need to distinguish whether the values they store are for mutable or immutable
@@ -217,7 +217,7 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
         _Expression::Id(ref id) => Eval::Default(env.lookup(id)),
         _Expression::Nil => Eval::Default(Value::Nil),
         _Expression::Bool(v) => Eval::Default(Value::Bool(v)),
-        _Expression::Num(ref v) => Eval::Default(Value::Num(v.clone())),
+        _Expression::Int(ref v) => Eval::Default(Value::Int(v.clone())),
         _Expression::Land(ref left, ref right) => {
             evaluate(left, env).and_then(|val| {
                 if truthy(&val) {
@@ -535,11 +535,11 @@ pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) 
             }
         }
 
-        _Pattern::Num(n) => {
+        _Pattern::Int(n) => {
             match val {
-                Value::Num(n2) if n == n2 => Exec::Default(Value::Nil, env),
-                _ => Exec::Error(RefThreadLocal::borrow(&builtins::ERR_REFUTED_NUM).clone(), Reason(_Reason::Refuted {
-                    expected: RefutationKind::Num(n.clone()),
+                Value::Int(n2) if n == n2 => Exec::Default(Value::Nil, env),
+                _ => Exec::Error(RefThreadLocal::borrow(&builtins::ERR_REFUTED_INT).clone(), Reason(_Reason::Refuted {
+                    expected: RefutationKind::Int(n.clone()),
                     actual: val.clone(),
                 }, meta.clone())),
             }

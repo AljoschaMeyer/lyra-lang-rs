@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
-use rug::{Rational};
+use either::{Either, Left, Right};
+use rug::Integer;
+use strtod::strtod;
 
 use super::syntax::*;
 
@@ -62,6 +64,15 @@ impl<'a> Parser<'a> {
         let _ = self.next();
     }
 
+    /// Skip one char ahead if the predicate returns true.
+    fn skip_pred<P: FnOnce(char) -> bool>(&mut self, p: P) {
+        if let Some(c) = self.peek() {
+            if p(c) {
+                self.skip();
+            }
+        }
+    }
+
     /// Skip while the predicate returns true.
     fn skip_while<P: Fn(char) -> bool>(&mut self, p: P) {
         while let Some(c) = self.peek() {
@@ -89,6 +100,11 @@ impl<'a> Parser<'a> {
     // Reads the next char, return whether it matched. Returns false on end of input.
     fn expect(&mut self, expected: char) -> bool {
         self.next().map(|c| c == expected).unwrap_or(false)
+    }
+
+    /// Reads the next char, returns whether the predicate returned true.
+    fn expect_pred<P: FnOnce(char) -> bool>(&mut self, p: P) -> bool {
+        self.next().map(p).unwrap_or(false)
     }
 
     // Returns the next byte without consuming it.
@@ -381,11 +397,15 @@ impl<'a> Parser<'a> {
         return Ok(Expression(_Expression::Loop(matchee, branches), meta));
     }
 
-    fn p_number(&mut self) -> Result<(Rational, Meta), ParseNumError> {
+    fn p_number(&mut self) -> Result<(Either<Integer, f64>, Meta), ParseNumError> {
         let meta = self.meta();
         let start = self.input;
 
-        if self.skip_str("0x") {
+        if self.skip_str("NaN") {
+            return Ok((Right(std::f64::NAN), meta));
+        } else if self.skip_str("Infinity") {
+            return Ok((Right(std::f64::INFINITY), meta));
+        } else if self.skip_str("0x") {
             // parse hexadecimal literal
             match self.next() {
                 None => return Err(ParseNumError::EmptyHex),
@@ -395,7 +415,7 @@ impl<'a> Parser<'a> {
 
             self.skip_while(|c| c.is_ascii_hexdigit() || c == '_');
 
-            return Ok((Rational::from_str_radix(&start[2..start.len() - self.input.len()], 16).unwrap(), meta));
+            return Ok((Left(Integer::from_str_radix(&start[2..start.len() - self.input.len()], 16).unwrap()), meta));
         } else {
             // parse either a decimal integer or a float
             match self.next() {
@@ -406,12 +426,9 @@ impl<'a> Parser<'a> {
 
             self.skip_while(|c| c.is_digit(10) || c == '_');
 
-            let int = Rational::from_str_radix(&start[..start.len() - self.input.len()], 10).unwrap();
-
             if let Some('.') = self.peek() {
                 // parse float
                 self.skip();
-                let start_fraction = self.input;
                 match self.next() {
                     None => return Err(ParseNumError::EmptyFractionalPart),
                     Some('0'...'9') => {}
@@ -419,25 +436,32 @@ impl<'a> Parser<'a> {
                 }
                 self.skip_while(|c| c.is_digit(10));
 
-                let fractional_int = Rational::from_str_radix(&start_fraction[..start_fraction.len() - self.input.len()], 10).unwrap();
-                let ratio = if fractional_int == 0 {
-                    int
-                } else {
-                    let fractional_part = fractional_int.recip();
-                    int + fractional_part
-                };
+                if self.peek().unwrap_or('z') == 'E' || self.peek().unwrap_or('z') == 'e' {
+                    self.skip();
+                    self.skip_pred(|c| c == '+' || c == '-');
 
-                return Ok((ratio, meta));
+                    if !self.expect_pred(|c| c.is_ascii_digit()) {
+                        return Err(ParseNumError::EmptyExponent);
+                    }
+
+                    self.skip_while(|c| c.is_ascii_digit());
+                }
+
+                return Ok((Right(strtod(&start[..start.len() - self.input.len()]).unwrap()), meta));
             } else {
                 // not a float
-                return Ok((int, meta));
+                let int = Integer::from_str_radix(&start[..start.len() - self.input.len()], 10).unwrap();
+                return Ok((Left(int), meta));
             }
         }
     }
 
     fn p_num(&mut self) -> Result<Expression, ParseNumError> {
         let (number, meta) = self.p_number()?;
-        Ok(Expression(_Expression::Num(number), meta))
+        match number {
+            Left(int) => Ok(Expression(_Expression::Int(int), meta)),
+            Right(float) => unimplemented!(),
+        }
     }
 
     // Non-leftrecursive expressions
@@ -681,19 +705,11 @@ impl<'a> Parser<'a> {
                 }
             },
             Some(c) if c.is_digit(10) => {
-                let (numerator, meta) = self.p_number()?;
-                self.skip_ws();
-                if self.skip_str("/") {
-                    self.skip_ws();
-                    let (denominator, _) = self.p_number()?;
+                let (num, meta) = self.p_number()?;
 
-                    if denominator == 0 {
-                        Err(ParsePatternError::ZeroDenominator)
-                    } else {
-                        Ok(Pattern(_Pattern::Num(numerator / denominator), meta))
-                    }
-                } else {
-                    Ok(Pattern(_Pattern::Num(numerator), meta))
+                match num {
+                    Left(int) => Ok(Pattern(_Pattern::Int(int), meta)),
+                    Right(float) => unimplemented!(),
                 }
             }
             Some(_) => Err(ParsePatternError::Leading),
@@ -978,6 +994,8 @@ pub enum ParseNumError {
     EmptyFractionalPart,
     #[fail(display = "decimal point must be followed by a decimal digit")]
     LeadingFractionalPart,
+    #[fail(display = "exponent must be followed by at least one digit")]
+    EmptyExponent,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, Fail)]

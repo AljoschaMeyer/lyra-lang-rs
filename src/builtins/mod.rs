@@ -12,7 +12,7 @@ ref_thread_local! {
     pub static managed ERR_TYPE: Value = Value::Nil; // TODO turn into string
     pub static managed ERR_REFUTED_NIL: Value = Value::Nil; // TODO turn into string
     pub static managed ERR_REFUTED_BOOL: Value = Value::Nil; // TODO turn into string
-    pub static managed ERR_REFUTED_NUM: Value = Value::Nil; // TODO turn into string
+    pub static managed ERR_REFUTED_INT: Value = Value::Nil; // TODO turn into string
 
     pub static managed HALT: Value = Value::Fun(_Fun::Native0(halt));
     pub static managed IS_TRUTHY: Value = Value::Fun(_Fun::Native1(is_truthy));
@@ -26,7 +26,7 @@ ref_thread_local! {
 
     pub static managed IS_NIL: Value = Value::Fun(_Fun::Native1(is_nil));
     pub static managed IS_BOOL: Value = Value::Fun(_Fun::Native1(is_bool));
-    pub static managed IS_NUM: Value = Value::Fun(_Fun::Native1(is_num));
+    pub static managed IS_INT: Value = Value::Fun(_Fun::Native1(is_int));
     // TODO is_int, is_nat
 
     pub static managed BOOL_NOT: Value = Value::Fun(_Fun::Native1(bool_not));
@@ -57,7 +57,7 @@ ref_thread_local! {
 
         env = env.insert("is_nil".to_string(), IS_NIL.borrow().clone(), false);
         env = env.insert("is_bool".to_string(), IS_BOOL.borrow().clone(), false);
-        env = env.insert("is_num".to_string(), IS_NUM.borrow().clone(), false);
+        env = env.insert("is_int".to_string(), IS_INT.borrow().clone(), false);
 
         env = env.insert("bool_not".to_string(), BOOL_NOT.borrow().clone(), false);
         env = env.insert("bool_and".to_string(), BOOL_AND.borrow().clone(), false);
@@ -120,9 +120,9 @@ fn is_bool(val: Value) -> Result<Value, (Value, _Reason)> {
     }
 }
 
-fn is_num(val: Value) -> Result<Value, (Value, _Reason)> {
+fn is_int(val: Value) -> Result<Value, (Value, _Reason)> {
     match val {
-        Value::Num(..) => Ok(Value::Bool(true)),
+        Value::Int(..) => Ok(Value::Bool(true)),
         _ => Ok(Value::Bool(false)),
     }
 }

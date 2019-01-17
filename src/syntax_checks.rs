@@ -114,7 +114,7 @@ fn check_exp(scope: Rc<RefCell<Scope>>, exp: &Expression) -> Result<(), (String,
             }
         }
 
-        _Expression::Nil | _Expression::Bool(..) | _Expression::Num(..) => Ok(()),
+        _Expression::Nil | _Expression::Bool(..) | _Expression::Int(..) => Ok(()),
 
         _Expression::Land(ref lhs, ref rhs) | _Expression::Lor(ref lhs, ref rhs) | _Expression::BinOp(ref lhs, _, ref rhs) => {
             let _ = check_exp(scope.clone(), lhs)?;
@@ -227,7 +227,7 @@ fn check_pattern(scope: Rc<RefCell<Scope>>, pat: &Pattern) -> Result<(), (String
             Ok(())
         }
 
-        _Pattern::Blank | _Pattern::Nil | _Pattern::Bool(..) | _Pattern::Num(..) => Ok(()),
+        _Pattern::Blank | _Pattern::Nil | _Pattern::Bool(..) | _Pattern::Int(..) => Ok(()),
     }
 }
 

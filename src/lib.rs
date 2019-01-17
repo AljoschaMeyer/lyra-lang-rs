@@ -1,5 +1,6 @@
 #![feature(try_from)]
 
+extern crate either;
 extern crate failure;
 #[macro_use] extern crate failure_derive;
 extern crate im_rc;
@@ -8,6 +9,7 @@ extern crate im_rc;
 #[macro_use] extern crate gc;
 extern crate rug;
 extern crate ropey;
+extern crate strtod;
 
 pub mod gc_foreign;
 pub mod syntax;
@@ -174,11 +176,10 @@ mod tests {
     }
 
     #[test]
-    fn test_num() {
-        assert_eq!(run("17 == 17.00").unwrap(), Value::Bool(true));
+    fn test_int() {
+        assert_eq!(run("17 == 1_7").unwrap(), Value::Bool(true));
         assert_eq!(run("1_7 == 0x11").unwrap(), Value::Bool(true));
-
-        assert_eq!(run("case 5 {50 / 10.0 -> { true } _ -> { false }}").unwrap(), Value::Bool(true));
+        assert_eq!(run("case 5 {5__ -> { true } _ -> { false }}").unwrap(), Value::Bool(true));
     }
 
     #[test]
