@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::rc::Rc;
 
 use gc::{Gc, GcCell};
-use num::BigRational;
+use rug::Rational;
 use ref_thread_local::RefThreadLocal;
 
 use super::gc_foreign::OrdMap;
@@ -14,7 +14,7 @@ use super::builtins;
 pub enum Value {
     Nil,
     Bool(bool),
-    Num(#[unsafe_ignore_trace] BigRational),
+    Num(#[unsafe_ignore_trace] Rational),
     Fun(_Fun),
 }
 
@@ -60,7 +60,7 @@ pub enum _Reason {
 pub enum RefutationKind {
     Nil,
     Bool(bool),
-    Num(BigRational),
+    Num(Rational),
 }
 
 /// The environments need to distinguish whether the values they store are for mutable or immutable

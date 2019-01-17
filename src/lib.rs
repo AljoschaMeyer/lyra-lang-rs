@@ -6,7 +6,7 @@ extern crate im_rc;
 #[macro_use] extern crate ref_thread_local;
 #[macro_use] extern crate gc_derive;
 #[macro_use] extern crate gc;
-extern crate num;
+extern crate rug;
 extern crate ropey;
 
 pub mod gc_foreign;
@@ -176,7 +176,7 @@ mod tests {
     #[test]
     fn test_num() {
         assert_eq!(run("17 == 17.00").unwrap(), Value::Bool(true));
-        assert_eq!(run("17 == 0x11").unwrap(), Value::Bool(true));
+        assert_eq!(run("1_7 == 0x11").unwrap(), Value::Bool(true));
 
         assert_eq!(run("case 5 {50 / 10.0 -> { true } _ -> { false }}").unwrap(), Value::Bool(true));
     }

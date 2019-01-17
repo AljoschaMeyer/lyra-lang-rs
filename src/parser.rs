@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use num::{BigInt, BigRational, Num, Zero};
+use rug::{Rational};
 
 use super::syntax::*;
 
@@ -381,7 +381,7 @@ impl<'a> Parser<'a> {
         return Ok(Expression(_Expression::Loop(matchee, branches), meta));
     }
 
-    fn p_number(&mut self) -> Result<(BigRational, Meta), ParseNumError> {
+    fn p_number(&mut self) -> Result<(Rational, Meta), ParseNumError> {
         let meta = self.meta();
         let start = self.input;
 
@@ -395,8 +395,7 @@ impl<'a> Parser<'a> {
 
             self.skip_while(|c| c.is_ascii_hexdigit() || c == '_');
 
-            let int = BigInt::from_str_radix(&start[2..start.len() - self.input.len()], 16).unwrap();
-            return Ok((BigRational::from_integer(int), meta));
+            return Ok((Rational::from_str_radix(&start[2..start.len() - self.input.len()], 16).unwrap(), meta));
         } else {
             // parse either a decimal integer or a float
             match self.next() {
@@ -407,7 +406,7 @@ impl<'a> Parser<'a> {
 
             self.skip_while(|c| c.is_digit(10) || c == '_');
 
-            let int = BigInt::from_str_radix(&start[..start.len() - self.input.len()], 10).unwrap();
+            let int = Rational::from_str_radix(&start[..start.len() - self.input.len()], 10).unwrap();
 
             if let Some('.') = self.peek() {
                 // parse float
@@ -420,18 +419,18 @@ impl<'a> Parser<'a> {
                 }
                 self.skip_while(|c| c.is_digit(10));
 
-                let fractional_int = BigInt::from_str_radix(&start_fraction[..start_fraction.len() - self.input.len()], 10).unwrap();
-                let ratio = if fractional_int.is_zero() {
-                    BigRational::from_integer(int)
+                let fractional_int = Rational::from_str_radix(&start_fraction[..start_fraction.len() - self.input.len()], 10).unwrap();
+                let ratio = if fractional_int == 0 {
+                    int
                 } else {
-                    let fractional_part = BigRational::from_integer(fractional_int).recip();
-                    BigRational::from_integer(int) + fractional_part
+                    let fractional_part = fractional_int.recip();
+                    int + fractional_part
                 };
 
                 return Ok((ratio, meta));
             } else {
                 // not a float
-                return Ok((BigRational::from_integer(int), meta));
+                return Ok((int, meta));
             }
         }
     }
@@ -688,7 +687,7 @@ impl<'a> Parser<'a> {
                     self.skip_ws();
                     let (denominator, _) = self.p_number()?;
 
-                    if denominator.is_zero() {
+                    if denominator == 0 {
                         Err(ParsePatternError::ZeroDenominator)
                     } else {
                         Ok(Pattern(_Pattern::Num(numerator / denominator), meta))

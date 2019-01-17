@@ -4,6 +4,8 @@ use super::semantics::{Value, Environment, _Fun, _Reason, truthy};
 
 mod bools;
 use self::bools::*;
+mod nums;
+use self::nums::*;
 
 ref_thread_local! {
     pub static managed ERR_NOT_A_FUNCTION: Value = Value::Nil; // TODO turn into string
@@ -24,6 +26,8 @@ ref_thread_local! {
 
     pub static managed IS_NIL: Value = Value::Fun(_Fun::Native1(is_nil));
     pub static managed IS_BOOL: Value = Value::Fun(_Fun::Native1(is_bool));
+    pub static managed IS_NUM: Value = Value::Fun(_Fun::Native1(is_num));
+    // TODO is_int, is_nat
 
     pub static managed BOOL_NOT: Value = Value::Fun(_Fun::Native1(bool_not));
     pub static managed BOOL_AND: Value = Value::Fun(_Fun::Native2(bool_and));
@@ -53,6 +57,7 @@ ref_thread_local! {
 
         env = env.insert("is_nil".to_string(), IS_NIL.borrow().clone(), false);
         env = env.insert("is_bool".to_string(), IS_BOOL.borrow().clone(), false);
+        env = env.insert("is_num".to_string(), IS_NUM.borrow().clone(), false);
 
         env = env.insert("bool_not".to_string(), BOOL_NOT.borrow().clone(), false);
         env = env.insert("bool_and".to_string(), BOOL_AND.borrow().clone(), false);
@@ -111,6 +116,13 @@ fn is_nil(val: Value) -> Result<Value, (Value, _Reason)> {
 fn is_bool(val: Value) -> Result<Value, (Value, _Reason)> {
     match val {
         Value::Bool(..) => Ok(Value::Bool(true)),
+        _ => Ok(Value::Bool(false)),
+    }
+}
+
+fn is_num(val: Value) -> Result<Value, (Value, _Reason)> {
+    match val {
+        Value::Num(..) => Ok(Value::Bool(true)),
         _ => Ok(Value::Bool(false)),
     }
 }
