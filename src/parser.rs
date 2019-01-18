@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use either::{Either, Left, Right};
+use ordered_float::OrderedFloat;
 use rug::Integer;
 use strtod::strtod;
 
@@ -460,7 +461,7 @@ impl<'a> Parser<'a> {
         let (number, meta) = self.p_number()?;
         match number {
             Left(int) => Ok(Expression(_Expression::Int(int), meta)),
-            Right(float) => unimplemented!(),
+            Right(float) => Ok(Expression(_Expression::Float(OrderedFloat(float)), meta)),
         }
     }
 
@@ -709,7 +710,7 @@ impl<'a> Parser<'a> {
 
                 match num {
                     Left(int) => Ok(Pattern(_Pattern::Int(int), meta)),
-                    Right(float) => unimplemented!(),
+                    Right(float) => Ok(Pattern(_Pattern::Float(OrderedFloat(float)), meta)),
                 }
             }
             Some(_) => Err(ParsePatternError::Leading),

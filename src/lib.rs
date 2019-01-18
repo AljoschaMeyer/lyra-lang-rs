@@ -3,10 +3,11 @@
 extern crate either;
 extern crate failure;
 #[macro_use] extern crate failure_derive;
-extern crate im_rc;
-#[macro_use] extern crate ref_thread_local;
 #[macro_use] extern crate gc_derive;
 #[macro_use] extern crate gc;
+extern crate ordered_float;
+extern crate im_rc;
+#[macro_use] extern crate ref_thread_local;
 extern crate rug;
 extern crate ropey;
 extern crate strtod;

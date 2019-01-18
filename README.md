@@ -2,18 +2,7 @@
 
 Lyra is a dynamically typed, imperative programming language. A distinct feature is the use of immutable values, even for compound data structures like arrays. Mutation only happens by assigning different values to variables, and aside from this feature, the language is functional. Values themselves do not change, except for the state of variables in the captured environment of a closure.
 
-The built-in values are a nil value, booleans, arbitrary-size rational numbers (but no floats), characters (unicode scalar values), unicode strings, byte strings, ordered sequences, sets, maps, and first-class functions (to be precise: lexically scoped closures with tail-call optimization). Finally there are futures, which provide the interface to the event loop used for nonblocking operations in the otherwise single-threaded execution.
-
-The data types have been chosen to satisfy useful algebraic or algorithmic properties, among them:
-
-- equality is reflexive (the float NaN violates this in other languages)
-- if two values compare as equal, pure functions will compute the same result when given either of them as input (the floats 0.0 and -0.0 violate this in other languages)
-- equality is based on value equality rather than pointer identity, except for functions and futures (where value identity is undecidable and/or meaningless due to mutable state)
-- there's a total order over all values (unspecified for functions and futures, fully deterministic for all other values)
-- characters are always valid unicode scalar values, strings are always valid unicode strings
-- strings and sequences guarantee logarithmic indexing, concatenation and slicing time complexity
-- sets and maps guarantee logarithmic retrieval, insertion and deletion time complexity
-- futures are lazy and can be cancelled
+The built-in values are a nil value, booleans, arbitrary-size integers, IEEE 754 64 bit floats, characters (unicode scalar values), unicode strings, byte strings, ordered sequences, sets, maps, and first-class functions (to be precise: lexically scoped closures with tail-call optimization). Finally there are futures, which provide the interface to the event loop used for nonblocking operations in the otherwise single-threaded execution.
 
 The language provides the ability to evaluate source code strings, and it also comes with a module-loading system. The ability to dynamically execute (potentially unknown) code requires an exception handling mechanism. This is implemented through standard throw/try/catch constructs - any value can be thrown.
 
@@ -21,7 +10,7 @@ Even though the language is dynamically typed and provides the ability to evalua
 
 Beyond these design decisions, lyra is mostly unopinionated. The language itself does not prescribe how I/O happens, all I/O facilities are provided by the runtime and must be loaded just like regular modules. A runtime might specify how native modules can be implemented via an FFI, lyra does not impose this either. The module-loading system expects code to live at specific places in the file system, but otherwise doesn't care how it got there, i.e. there's no mandatory versioning or dependency-resolution scheme, let alone a package manager.
 
-There's one final peculiarity about lyra: It's definition is static. Lyra isn't versioned, there won't be any feature additions, there won't be any changes to the specification. If anyone (including the original author) wants to "fix" something, or add new things, they will have to fork. The new language won't be lyra.
+There's one final peculiarity about lyra: It's definition is static. Lyra isn't versioned, there won't be any feature additions, there won't be any changes to the specification. If anyone (including the original author) wants to "fix" something, or add new things, they will have to fork. The new language won't be lyra. CAVEAT: This will only apply once a stable point has been reached, the language is still in flux right now.
 
 Though many languages influenced the design of lyra, the two most direct influences are clojure and javascript (although spiritually it might be closest to lua). Some good (but still imprecise) approximations of lyra are:
 

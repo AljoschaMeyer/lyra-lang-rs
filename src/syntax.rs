@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use ordered_float::OrderedFloat;
 use rug::Integer;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
@@ -55,6 +56,7 @@ pub enum _Expression {
     Nil,
     Bool(bool),
     Int(Integer),
+    Float(OrderedFloat<f64>),
     Land(Box<Expression>, Box<Expression>),
     Lor(Box<Expression>, Box<Expression>),
     BinOp(Box<Expression>, BinOp, Box<Expression>),
@@ -78,6 +80,7 @@ pub enum BinOp {
     Lte,
     Gt,
     Gte,
+    Add, // TODO all the other numeric ops
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -113,6 +116,7 @@ pub enum _Pattern {
     Nil,
     Bool(bool),
     Int(Integer),
+    Float(OrderedFloat<f64>),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]

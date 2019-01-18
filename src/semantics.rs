@@ -2,6 +2,7 @@ use std::borrow::Borrow;
 use std::rc::Rc;
 
 use gc::{Gc, GcCell};
+use ordered_float::OrderedFloat;
 use rug::Integer;
 use ref_thread_local::RefThreadLocal;
 
@@ -15,6 +16,7 @@ pub enum Value {
     Nil,
     Bool(bool),
     Int(#[unsafe_ignore_trace] Integer),
+    Float(#[unsafe_ignore_trace] OrderedFloat<f64>),
     Fun(_Fun),
 }
 
@@ -80,6 +82,7 @@ pub enum RefutationKind {
     Nil,
     Bool(bool),
     Int(Integer),
+    Float(OrderedFloat<f64>),
 }
 
 /// The environments need to distinguish whether the values they store are for mutable or immutable
@@ -237,6 +240,7 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
         _Expression::Nil => Eval::Default(Value::Nil),
         _Expression::Bool(v) => Eval::Default(Value::Bool(v)),
         _Expression::Int(ref v) => Eval::Default(Value::Int(v.clone())),
+        _Expression::Float(v) => Eval::Default(Value::Float(v)),
         _Expression::Land(ref left, ref right) => {
             evaluate(left, env).and_then(|val| {
                 if truthy(&val) {
@@ -265,6 +269,7 @@ pub fn evaluate(exp: &Expression, env: &Environment) -> Eval {
                         BinOp::Lte => Eval::Default(builtins::lte(val_left, val_right).unwrap()),
                         BinOp::Gt => Eval::Default(builtins::gt(val_left, val_right).unwrap()),
                         BinOp::Gte => Eval::Default(builtins::gte(val_left, val_right).unwrap()),
+                        _ => unimplemented!(), // TODO depending on type of val_left, call int_foo or float_foo
                     }
                 })
             })
@@ -546,7 +551,7 @@ pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) 
 
         _Pattern::Bool(b) => {
             match val {
-                Value::Bool(b2) if b == b2 => Exec::Default(Value::Nil, env),
+                Value::Bool(b2) if b2 == b => Exec::Default(Value::Nil, env),
                 _ => Exec::Error(RefThreadLocal::borrow(&builtins::ERR_REFUTED_BOOL).clone(), Reason(_Reason::Refuted {
                     expected: RefutationKind::Bool(*b),
                     actual: val.clone(),
@@ -556,9 +561,19 @@ pub fn destructure(Pattern(pat, meta): &Pattern, val: &Value, env: Environment) 
 
         _Pattern::Int(n) => {
             match val {
-                Value::Int(n2) if n == n2 => Exec::Default(Value::Nil, env),
+                Value::Int(n2) if n2 == n => Exec::Default(Value::Nil, env),
                 _ => Exec::Error(RefThreadLocal::borrow(&builtins::ERR_REFUTED_INT).clone(), Reason(_Reason::Refuted {
                     expected: RefutationKind::Int(n.clone()),
+                    actual: val.clone(),
+                }, meta.clone())),
+            }
+        }
+
+        _Pattern::Float(f) => {
+            match val {
+                Value::Float(f2) if f2 == f => Exec::Default(Value::Nil, env),
+                _ => Exec::Error(RefThreadLocal::borrow(&builtins::ERR_REFUTED_FLOAT).clone(), Reason(_Reason::Refuted {
+                    expected: RefutationKind::Float(f.clone()),
                     actual: val.clone(),
                 }, meta.clone())),
             }

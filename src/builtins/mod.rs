@@ -17,6 +17,7 @@ ref_thread_local! {
     pub static managed ERR_REFUTED_NIL: Value = Value::Nil; // TODO turn into string
     pub static managed ERR_REFUTED_BOOL: Value = Value::Nil; // TODO turn into string
     pub static managed ERR_REFUTED_INT: Value = Value::Nil; // TODO turn into string
+    pub static managed ERR_REFUTED_FLOAT: Value = Value::Nil; // TODO turn into string
 
 
     pub static managed TOPLEVEL: Environment = {
@@ -30,6 +31,7 @@ ref_thread_local! {
         env = env.insert("err_refuted_nil".to_string(), ERR_REFUTED_NIL.borrow().clone(), false);
         env = env.insert("err_refuted_bool".to_string(), ERR_REFUTED_BOOL.borrow().clone(), false);
         env = env.insert("err_refuted_int".to_string(), ERR_REFUTED_INT.borrow().clone(), false);
+        env = env.insert("err_refuted_float".to_string(), ERR_REFUTED_FLOAT.borrow().clone(), false);
 
         env = env.insert("halt".to_string(), Value::Fun(_Fun::Native0(halt)), false);
         env = env.insert("is_truthy".to_string(), Value::Fun(_Fun::Native1(is_truthy)), false);
@@ -101,27 +103,45 @@ pub fn is_not_truthy(val: Value) -> Result<Value, (Value, _Reason)> {
 }
 
 pub fn eq(a: Value, b: Value) -> Result<Value, (Value, _Reason)> {
-    Ok(Value::Bool(a == b))
+    match (a, b) {
+        (Value::Float(a), Value::Float(b)) if a.0.is_nan() || b.0.is_nan() => Ok(Value::Bool(false)),
+        (a, b) => Ok(Value::Bool(a == b)),
+    }
 }
 
 pub fn neq(a: Value, b: Value) -> Result<Value, (Value, _Reason)> {
-    Ok(Value::Bool(a != b))
+    match (a, b) {
+        (Value::Float(a), Value::Float(b)) if a.0.is_nan() || b.0.is_nan() => Ok(Value::Bool(true)),
+        (a, b) => Ok(Value::Bool(a != b)),
+    }
 }
 
 pub fn lt(a: Value, b: Value) -> Result<Value, (Value, _Reason)> {
-    Ok(Value::Bool(a < b))
+    match (a, b) {
+        (Value::Float(a), Value::Float(b)) if a.0.is_nan() || b.0.is_nan() => Ok(Value::Bool(false)),
+        (a, b) => Ok(Value::Bool(a < b)),
+    }
 }
 
 pub fn lte(a: Value, b: Value) -> Result<Value, (Value, _Reason)> {
-    Ok(Value::Bool(a <= b))
+    match (a, b) {
+        (Value::Float(a), Value::Float(b)) if a.0.is_nan() || b.0.is_nan() => Ok(Value::Bool(false)),
+        (a, b) => Ok(Value::Bool(a <= b)),
+    }
 }
 
 pub fn gt(a: Value, b: Value) -> Result<Value, (Value, _Reason)> {
-    Ok(Value::Bool(a > b))
+    match (a, b) {
+        (Value::Float(a), Value::Float(b)) if a.0.is_nan() || b.0.is_nan() => Ok(Value::Bool(false)),
+        (a, b) => Ok(Value::Bool(a > b)),
+    }
 }
 
 pub fn gte(a: Value, b: Value) -> Result<Value, (Value, _Reason)> {
-    Ok(Value::Bool(a >= b))
+    match (a, b) {
+        (Value::Float(a), Value::Float(b)) if a.0.is_nan() || b.0.is_nan() => Ok(Value::Bool(false)),
+        (a, b) => Ok(Value::Bool(a >= b)),
+    }
 }
 
 fn is_nil(val: Value) -> Result<Value, (Value, _Reason)> {
